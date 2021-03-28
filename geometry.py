@@ -1,30 +1,54 @@
 import math
+import numpy as np
+import matplotlib.pyplot as plt
+from stonesoup.functions import cart2pol
+from stonesoup.types.angle import Bearing
 
-def sign(x): return (x > 0) - (x < 0)
+
+def sign(x): return int(x > 0) - int(x < 0)
+
+
 DoubleTolerance = 1e-5
+
 
 class Point:
     """2D cartesian coordinate representation of point"""
+
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
 
-    def Print(self):
+    def print(self):
         print(self.x, ' ', self.y)
 
-    def getDistance(self, OtherPoint):
+    def get_distance(self, OtherPoint):
         return math.sqrt(math.pow((self.x - OtherPoint.x), 2) +
                          math.pow((self.y - OtherPoint.y), 2))
 
+    def to_array(self):
+        return np.array([self.x, self.y])
+
+    def compare(self, line):
+        dot = np.dot(line.NormalV.to_array(), self.to_array() - line.getMidPoint().to_array())
+        if dot == 0:
+            return dot
+        return dot / abs(dot)
+
+
 class Vector:
     """A quite basic 2D vector class"""
+
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
 
+    def to_array(self):
+        return np.array([self.x, self.y])
+
     def dotProduct(self, vector):
         """returns vector dot product of this vector with vector as function argument"""
-        return self.x * vector.x + self.y * vector.y
+        return np.dot(self.to_array(), vector.to_array())
+        # return self.x * vector.x + self.y * vector.y
 
 
 class LineSegment:
@@ -52,7 +76,7 @@ class LineSegment:
 
     def getLength(self):
         """returns length of our line segment """
-        return self.p1.getDistance(self.p2)
+        return self.p1.get_distance(self.p2)
 
     def Print(self):
         """prints point coordinates and direction of normal vector"""
@@ -97,16 +121,25 @@ class LineSegment:
             # Lines no Partition, in Back
             return 'B'
 
-    def split(self, OtherLine):
+    def split(self, other):
         """
-        :param OtherLine: LineSegment
+        :param other: LineSegment
         :return: returns two LineSegments if LineSegment in 'self' (as an infinite line segment) partitions 'otherLine' in space partitioning,
         otherwise returns None
         """
-        numer = (self.NormalV.x * (OtherLine.p1.x - self.p1.x)) + \
-            (self.NormalV.y * (OtherLine.p1.y - self.p1.y))
-        denom = ((-self.NormalV.x) * (OtherLine.p2.x - OtherLine.p1.x)) + \
-            ((-self.NormalV.y) * (OtherLine.p2.y - OtherLine.p1.y))
+
+        numer = np.dot(self.NormalV.to_array(),
+                       self.p1.to_array() - other.p1.to_array())
+        denom = np.dot(self.NormalV.to_array(),
+                       other.p2.to_array() - other.p1.to_array())
+
+        # numer = (self.NormalV.x * (other.p1.x - self.p1.x)) + \
+        #     (self.NormalV.y * (other.p1.y - self.p1.y))
+        # denom = ((-self.NormalV.x) * (other.p2.x - other.p1.x)) + \
+        #     ((-self.NormalV.y) * (other.p2.y - other.p1.y))
+        #
+        # numer = self.NormalV.to_array() @ (other.p1.to_array()-self.p1.to_array())
+        # denom = -self.NormalV.to_array() @ (other.p2.to_array()-other.p1.to_array())
 
         if denom != 0.0:
             t = numer / denom
@@ -114,13 +147,42 @@ class LineSegment:
             return None
 
         if 0 <= t <= 1.0:
-            IntersectPoint = Point()
-            IntersectPoint.x = OtherLine.p1.x + \
-                t * (OtherLine.p2.x - OtherLine.p1.x)
-            IntersectPoint.y = OtherLine.p1.y + \
-                t * (OtherLine.p2.y - OtherLine.p1.y)
-            return LineSegment(
-                OtherLine.p1, IntersectPoint, (OtherLine.Name + '1')), LineSegment(
-                IntersectPoint, OtherLine.p2, OtherLine.Normal, (OtherLine.Name + '2'))
+            x = other.p1.x + t * (other.p2.x - other.p1.x)
+            y = other.p1.y + t * (other.p2.y - other.p1.y)
+            intersection = Point(x, y)
+            return LineSegment(other.p1, intersection, other.Normal, Name=(other.Name + '_a')), \
+                   LineSegment(intersection, other.p2, other.Normal, Name=(other.Name + '_b'))
         else:
             return None
+
+    def plot(self, ax=None, plot_norm=False, **kwargs):
+        x = [self.p1.x, self.p2.x]
+        y = [self.p1.y, self.p2.y]
+        if ax:
+            ax.plot(x, y, **kwargs)
+            if plot_norm:
+                midPoint = self.getMidPoint()
+                ax.quiver(midPoint.x, midPoint.y, self.NormalV.x, self.NormalV.y, width=0.001, headwidth=0.2)
+        else:
+            if plot_norm:
+                midPoint = self.getMidPoint()
+                plt.quiver(midPoint.x, midPoint.y, self.NormalV.x, self.NormalV.y, width=0.001, headwidth=0.2)
+            plt.plot(x, y, **kwargs)
+
+    def to_polar(self, ref=None):
+        if not ref:
+            x_ref = 0
+            y_ref = 0
+        else:
+            x_ref = ref.x
+            y_ref = ref.y
+
+        x, y = (self.p1.x-x_ref, self.p1.y-y_ref)
+        rho, phi = cart2pol(x, y)
+        p1 = (rho, Bearing(phi))
+
+        x, y = (self.p2.x-x_ref, self.p2.y-y_ref)
+        rho, phi = cart2pol(x, y)
+        p2 = (rho, Bearing(phi))
+
+        return p1, p2

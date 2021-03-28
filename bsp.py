@@ -1,12 +1,29 @@
 from geometry import LineSegment, Point
+import random
+import multiprocessing
+import numpy as np
+import networkx as nx
+from networkx.drawing.nx_pydot import graphviz_layout
+import matplotlib.pyplot as plt
+
+def calc_stuff(index, ALineSegment, ListLineSegments):
+    PartitionCount = 0
+    for OtherIndex, OtherLineSegment in enumerate(ListLineSegments):
+        # print("{}|{} out of {}".format(index, OtherIndex, len(ListLineSegments)))
+        if index != OtherIndex:
+            CompareResult = ALineSegment.compare(OtherLineSegment)
+            if CompareResult == 'P':
+                PartitionCount += 1
+    return PartitionCount
 
 class BinaryTree:
     """Binary tree class"""
-    def __init__(self):
+    def __init__(self, data=[], parent=None):
         """Constructor, declares variables for left and right sub-tree and data for the current node"""
         self.left = None
         self.right = None
-        self.data = []
+        self.data = data
+        self.parent = parent
 
     def printTree(self):
         """Prints the all tree nodes 'Name' attribute in a binary tree format (needs to be improved)"""
@@ -41,11 +58,42 @@ class BinaryTree:
             PrintString += '\n'
         return PrintString
 
+
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
     def __init__(self):
         """Constructor, initializes binary tree"""
         self.tree = BinaryTree()
+
+    def to_graph(self):
+        g = nx.Graph()
+        return self._traverse_tree_nx(self.tree, g)
+
+    def _traverse_tree_nx(self, tree, g, parent=None):
+        child = g.number_of_nodes() + 1
+        data = [l.Name for l in tree.data]
+        g.add_node(child, data=data)
+        if parent:
+            g.add_edge(parent, child)
+        if tree.left:
+            g = self._traverse_tree_nx(tree.left, g, child)
+        if tree.right:
+            g = self._traverse_tree_nx(tree.right, g, child)
+        return g
+
+    def draw_nx(self, ax=None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.gca()
+
+        g = self.to_graph()
+        pos = graphviz_layout(g, prog="dot")
+        labels = {n: g.nodes[n]['data'] for n in g.nodes}
+        nx.draw(g, pos, ax=ax)
+        pos_labels = {}
+        for node, coords in pos.items():
+            pos_labels[node] = (coords[0] + 10, coords[1])
+        nx.draw_networkx_labels(g, pos_labels, labels=labels)
 
     def readLinesFromFile(self, filename):
         """Not in use currently"""
@@ -74,6 +122,7 @@ class BSP:
         for index, ALineSegment in enumerate(ListLineSegments):
             PartitionCount = 0
             for OtherIndex, OtherLineSegment in enumerate(ListLineSegments):
+                print("{}|{} out of {}".format(index, OtherIndex, len(ListLineSegments)))
                 if index != OtherIndex:
                     CompareResult = ALineSegment.compare(OtherLineSegment)
                     if CompareResult == 'P':
@@ -85,6 +134,17 @@ class BSP:
 
         return MinIndex
 
+    def heuristicMinimumPartitionPar(self, ListLineSegments):
+        num_cores = multiprocessing.cpu_count()
+        print('Num cores: {}'.format(num_cores))
+        pool = multiprocessing.Pool(num_cores)
+        data = [(index, ALineSegment, ListLineSegments) for index, ALineSegment in enumerate(ListLineSegments)]
+        PartitionCounts = pool.starmap(calc_stuff, data)
+        pool.close()
+        pool.join()
+        MinIndex = np.argmin(PartitionCounts)
+        return MinIndex
+
     def heuristicEvenDivide(self, ListLineSegments):
         """Returns the index of the line segment in 'ListLineSegments' which produces the most balanced tree"""
         BestIndex = 0
@@ -94,6 +154,7 @@ class BSP:
             LeftCount = 0
             RightCount = 0
             for OtherIndex, OtherLineSegment in enumerate(ListLineSegments):
+                print("{}|{} out of {}".format(index, OtherIndex, len(ListLineSegments)))
                 if index != OtherIndex:
                     CompareResult = ALineSegment.compare(OtherLineSegment)
                     if CompareResult == 'P':
@@ -124,18 +185,23 @@ class BSP:
         :return: nothing
         """
         BestIndex = 0
+        print('heuristic')
         if UseHeuristic == 'min':
             BestIndex = self.heuristicMinimumPartition(tree.data)
         elif UseHeuristic == 'even':
             BestIndex = self.heuristicEvenDivide(tree.data)
+        elif UseHeuristic == 'random':
+            BestIndex = random.randrange(len(tree.data)-1)
 
+        print('....')
         DataList = []
         DataListLeft = []
         DataListRight = []
         H = tree.data.pop(BestIndex)
         DataList.append(H)
 
-        for L in tree.data:
+        for i, L in enumerate(tree.data):
+            print('{}/{}'.format(i, len(tree.data)))
             result = H.compare(L)
             if result == 'P':
                 SplitLines = H.split(L)
@@ -160,13 +226,13 @@ class BSP:
 
         tree.data = DataList
         if len(DataListLeft) > 0:
-            tree.left = BinaryTree()
+            tree.left = BinaryTree(parent=tree)
             tree.left.data = DataListLeft
             if len(DataListLeft) > 1:
                 self.generateTree(tree.left, UseHeuristic)
 
         if len(DataListRight) > 0:
-            tree.right = BinaryTree()
+            tree.right = BinaryTree(parent=tree)
             tree.right.data = DataListRight
             if len(DataListRight) > 1:
                 self.generateTree(tree.right, UseHeuristic)
@@ -238,3 +304,16 @@ class BSP:
                               ', # of traversals(T): ' + str(NumOfTraversals))
 
         return LoS
+
+    def find_leaf(self, p):
+        tree = self.tree
+        while True:
+            line = tree.data[0]
+            if p.compare(line) > 0:
+                if not tree.left:
+                    return tree
+                tree = tree.left
+            elif p.compare(line) < 0:
+                if not tree.right:
+                    return tree
+                tree = tree.right

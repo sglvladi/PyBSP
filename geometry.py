@@ -18,6 +18,9 @@ class Point:
         self.x = x
         self.y = y
 
+    def __eq__(self, other):
+        return np.array_equal(self.to_array(), other.to_array())
+
     def print(self):
         print(self.x, ' ', self.y)
 
@@ -29,10 +32,39 @@ class Point:
         return np.array([self.x, self.y])
 
     def compare(self, line):
+        """
+        Compare point to line
+
+        Parameters
+        ----------
+        line: LineSegment
+            Line to compare against
+
+        Returns
+        -------
+        int
+            1  - Point is in direction of line normal (in front)
+            -1 - Point is in opposite direction of line normal (behind)
+
+        """
         dot = np.dot(line.NormalV.to_array(), self.to_array() - line.getMidPoint().to_array())
         if dot == 0:
             return dot
         return dot / abs(dot)
+
+    def to_polar(self, ref=None):
+        if not ref:
+            x_ref = 0
+            y_ref = 0
+        else:
+            x_ref = ref.x
+            y_ref = ref.y
+
+        x, y = (self.x-x_ref, self.y-y_ref)
+        rho, phi = cart2pol(x, y)
+        p1 = (rho, Bearing(phi))
+
+        return p1
 
 
 class Vector:

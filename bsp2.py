@@ -1,10 +1,11 @@
 from geometry import LineSegment, Point
+from utils import extrapolate_line, test_between, to_range2, merge_lines
 import random
 import numpy as np
 import networkx as nx
 from networkx.drawing.nx_pydot import graphviz_layout
 import matplotlib.pyplot as plt
-
+from stonesoup.functions import pol2cart
 
 class BinaryTree:
     """Binary tree class"""
@@ -432,29 +433,18 @@ class BSP:
                 tree = tree.right
 
     def render(self, p):
-        r_lines = []
-
         t = self.find_leaf(p)
 
-        lines = t.data
-
-        for line in lines:
-            p1, p2 = line.to_polar(p)
-            r_lines.append((p1, p2, line.Name))
-
+        r_lines = self._render_child(t, p)
         parent = t.parent
 
         p_lines = self._render_parent(parent, t, p)
+
         return r_lines + p_lines
 
     def _render_parent(self, parent, child, p):
         a = parent.data[0].Name
-        r_lines = []
-
-        lines = parent.data
-        for line in lines:
-            p1, p2 = line.to_polar(p)
-            r_lines.append((p1, p2, line.Name))
+        r_lines = parent.data
 
         if parent.left == child:
             if parent.right:
@@ -474,18 +464,12 @@ class BSP:
         a = child.data[0].Name
         r_lines = []
         if child.is_leaf():
-            lines = child.data
-            for line in lines:
-                p1, p2 = line.to_polar(p)
-                r_lines.append((p1, p2, line.Name))
+            r_lines = child.data
         else:
             r_lines_left = []
             r_lines_right = []
 
-            lines = child.data
-            for line in lines:
-                p1, p2 = line.to_polar(p)
-                r_lines.append((p1, p2, line.Name))
+            r_lines = child.data
 
             if child.left and child.right:
                 min_left = np.inf
@@ -513,3 +497,162 @@ class BSP:
 
                 r_lines =  r_lines + r_lines_left + r_lines_right
         return r_lines
+
+    def render2(self, ref_point):
+        # Find the leaf node
+        leaf = self.find_leaf(ref_point)
+
+        r_lines = self._render_child2(leaf, ref_point)
+        parent = leaf.parent
+
+        p_lines = self._render_parent2(parent, leaf, ref_point)
+
+        l = r_lines + p_lines
+
+        # Convert to ranges
+        vis_lines = []
+        fov = []
+        for line in l:
+            a = line.Name
+            c1, c2 = (line.p1, line.p2)
+            p1, p2 = line.to_polar(ref_point)
+            phi1 = p1[1]
+            phi2 = p2[1]
+
+            if not len(fov):
+                # First iteration
+                vis_lines.append(line)
+                fov.append([np.amax([phi1, phi2]), np.amin([phi1, phi2])])
+            else:
+                visible = True
+                for i, (phi_1, phi_2) in enumerate(fov):
+
+                    # Check if angles fall within rendered angles
+                    phi1_test = test_between(phi1, phi_1, phi_2)  # phi_1 <-> phi1 <-> phi_2
+                    phi2_test = test_between(phi2, phi_1, phi_2)  # phi_1 <-> phi2 <-> phi_2
+
+                    if phi1_test and phi2_test:
+                        # If this is true for both angles, then line is not visible
+                        visible = False
+                        break
+                    elif phi1_test:
+                        # Elif phi1 is within rendered fov, but phi2
+                        if test_between(phi_1, phi1, phi2, not_equals=True):
+                            # if phi_1 falls between phi1 and phi2 (i.e. phi_2 <-> phi1 <-> phi_1 <-> phi2)
+                            phi1 = phi_1
+                        elif test_between(phi_2, phi1, phi2, not_equals=True):
+                            phi1 = phi_2
+                        else:
+                            continue
+
+                        # Split existing line, according to fov
+                        x, y = pol2cart(1., phi1)
+                        x, y = (x + ref_point.x, y + ref_point.y)
+                        li = LineSegment(ref_point, Point(x, y))
+                        l1, l2 = li.split(line)
+
+                        _, a1 = l1.p1.to_polar(ref_point)
+                        if test_between(a1, phi_1, phi_2):
+                            c1, c2 = (l2.p1, l2.p2)
+                            p1, p2 = l2.to_polar(ref_point)
+                        else:
+                            c1, c2 = (l1.p1, l1.p2)
+                            p1, p2 = l1.to_polar(ref_point)
+
+                    elif phi2_test:
+                        # Elif phi2 is within rendered fov, but phi1 is not
+                        # then we need to extend current fov to include phi1
+                        if test_between(phi_1, phi1, phi2, not_equals=True):
+                            # if phi_1 falls between phi1 and phi2 (i.e. phi_2 <-> phi2 <-> phi_1 <-> phi1)
+                            phi2 = phi_1
+                        elif test_between(phi_2, phi1, phi2, not_equals=True):
+                            # elif phi_2 falls between phi1 and phi2 (i.e. phi1 <-> phi_2 <-> phi2 <->  phi_1)
+                            phi2 = phi_2
+                        else:
+                            continue
+
+                        x, y = pol2cart(1., phi2)
+                        x, y = (x + ref_point.x, y + ref_point.y)
+                        li = LineSegment(ref_point, Point(x, y))
+                        l1, l2 = li.split(line)
+
+                        _, a1 = l1.p1.to_polar(ref_point)
+                        if test_between(a1, phi_1, phi_2):
+                            c1, c2 = (l2.p1, l2.p2)
+                            p1, p2 = l2.to_polar(ref_point)
+                        else:
+                            c1, c2 = (l1.p1, l1.p2)
+                            p1, p2 = l1.to_polar(ref_point)
+
+                _, dx = to_range2(p1[1], p2[1])
+                if visible and dx != 0:
+                    fov.append([np.amax([p1[1], p2[1]]), np.amin([p1[1], p2[1]])])
+                    line = LineSegment(c1, c2, line.Normal, line.Name)
+                    vis_lines.append(line)
+
+        merged = merge_lines(vis_lines)
+        return merged
+
+    def _render_parent2(self, parent, child, p):
+        a = parent.data[0].Name
+        r_lines = parent.data
+
+        if parent.left == child:
+            if parent.right:
+                if p.compare(parent.data[0]) > 0:
+                    r_lines = r_lines + self._render_child2(parent.right, p)
+                else:
+                    r_lines = self._render_child2(parent.right, p) + r_lines
+        else:
+            if parent.left:
+                if p.compare(parent.data[0]) > 0:
+                    r_lines = self._render_child2(parent.left, p) + r_lines
+                else:
+                    r_lines = r_lines + self._render_child2(parent.left, p)
+
+        p_lines = []
+        if not parent.is_root():
+            p_lines = self._render_parent2(parent.parent, parent, p)
+
+        r_lines = r_lines + p_lines
+        return r_lines
+
+    def _render_child2(self, child, p):
+        a = child.data[0].Name
+        r_lines = child.data
+        if child.is_leaf():
+            return r_lines
+        else:
+            r_lines_left = []
+            r_lines_right = []
+
+            r_lines = child.data
+
+            if child.left:
+                r_lines_left = self._render_child2(child.left, p)
+            if child.right:
+                r_lines_right = self._render_child2(child.right, p)
+
+            if p.compare(child.data[0]) > 0:
+                # if point is in front of dividing plane
+                r_lines = r_lines_left + r_lines + r_lines_right
+            else:
+                r_lines = r_lines_right + r_lines + r_lines_left
+        return r_lines
+
+    # def get_area(self, tree, xlim=(0, 800), ylim=(0, 800)):
+    #
+    #     lines = []
+    #     line = tree.data[0]
+    #     x, y = extrapolate_line(line, xlim, ylim)
+    #     c_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.Normal, line.Name)
+    #     lines.append(c_l)
+    #     root = tree.parent
+    #     while not root.is_root():
+    #         line = root.data[0]
+    #         x, y = extrapolate_line(line, xlim, ylim)
+    #         p_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.Normal, line.Name)
+    #
+    #         for c_l in
+    #
+    #         root = root.parent

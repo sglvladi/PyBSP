@@ -4,20 +4,15 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from shapely.geometry import LineString
 from copy import copy
+from stonesoup.functions import pol2cart
 from stonesoup.types.angle import Bearing
 from networkx.drawing.nx_pydot import graphviz_layout
+# from utils import plot_visibility
 
 from bsp2 import BSP
 from geometry import LineSegment, Point
+from utils import extrapolate_line, plot_visibility, plot_visibility2
 
-
-def sign(x): return (x > 0) - (x < 0)
-
-
-def pol2cart(rho, phi):
-    x = rho * np.cos(phi)
-    y = rho * np.sin(phi)
-    return (x, y)
 
 def generateRandom(n, Range, a=3, isPowerLaw=False):
     """
@@ -40,50 +35,51 @@ def generateRandom(n, Range, a=3, isPowerLaw=False):
         else:
             return np.random.power(a) * Range
 
+
 def generatePolygons():
     Lines = []
 
     # Polygon 1
-    offset_x = 100
-    offset_y = 100
-    width = 100
-    height = 100
+    offset_x = 100.
+    offset_y = 100.
+    width = 100.
+    height = 100.
     p1 = Point(offset_x, offset_y)
-    p2 = Point(offset_x, offset_y+height)
-    p3 = Point(offset_x+width, offset_y)
-    p4 = Point(offset_x+width, offset_y+height)
-    Lines.append(LineSegment(p1, p2, -1, '1'))
-    Lines.append(LineSegment(p1, p3, 1, '2'))
-    Lines.append(LineSegment(p3, p4, 1, '3'))
-    Lines.append(LineSegment(p2, p4, -1, '4'))
+    p2 = Point(offset_x, offset_y + height)
+    p3 = Point(offset_x + width, offset_y)
+    p4 = Point(offset_x + width, offset_y + height)
+    Lines.append(LineSegment(p1, p2, 1, '1'))
+    Lines.append(LineSegment(p1, p3, -1, '2'))
+    Lines.append(LineSegment(p3, p4, -1, '3'))
+    Lines.append(LineSegment(p2, p4, 1, '4'))
 
     # Polygon 2
-    p1 = Point(200, 600)
-    p2 = Point(450, 600)
-    p3 = Point(300, 700)
-    Lines.append(LineSegment(p1, p2, 1, '5'))
-    Lines.append(LineSegment(p2, p3, 1, '6'))
-    Lines.append(LineSegment(p3, p1, 1, '7'))
+    p1 = Point(200., 600.)
+    p2 = Point(450., 600.)
+    p3 = Point(300., 700.)
+    Lines.append(LineSegment(p1, p2, -1, '5'))
+    Lines.append(LineSegment(p2, p3, -1, '6'))
+    Lines.append(LineSegment(p3, p1, -1, '7'))
 
     # Polygon 3
-    p1 = Point(500, 150)
-    p2 = Point(600, 250)
-    p3 = Point(500, 350)
-    p4 = Point(400, 250)
-    Lines.append(LineSegment(p1, p2, 1, '8'))
-    Lines.append(LineSegment(p2, p3, 1, '9'))
-    Lines.append(LineSegment(p3, p4, 1, '10'))
-    Lines.append(LineSegment(p4, p1, 1, '11'))
+    p1 = Point(500., 150.)
+    p2 = Point(600., 250.)
+    p3 = Point(500., 350.)
+    p4 = Point(400., 250.)
+    Lines.append(LineSegment(p1, p2, -1, '8'))
+    Lines.append(LineSegment(p2, p3, -1, '9'))
+    Lines.append(LineSegment(p3, p4, -1, '10'))
+    Lines.append(LineSegment(p4, p1, -1, '11'))
 
     # Polygon 4
-    p1 = Point(0, 0)
-    p2 = Point(800, 0)
-    p3 = Point(800, 800)
-    p4 = Point(0, 800)
-    Lines.append(LineSegment(p1, p2, -1, '12'))
-    Lines.append(LineSegment(p2, p3, -1, '13'))
-    Lines.append(LineSegment(p3, p4, -1, '14'))
-    Lines.append(LineSegment(p4, p1, -1, '15'))
+    p1 = Point(0., 0.)
+    p2 = Point(800., 0.)
+    p3 = Point(800., 800.)
+    p4 = Point(0., 800.)
+    Lines.append(LineSegment(p1, p2, 1, '12'))
+    Lines.append(LineSegment(p2, p3, 1, '13'))
+    Lines.append(LineSegment(p3, p4, 1, '14'))
+    Lines.append(LineSegment(p4, p1, 1, '15'))
 
     return Lines
 
@@ -108,30 +104,7 @@ def generatePoints(n, width, height, isUniform=True):
 
     return Points
 
-
-def extrapolate_line(line, xlim, ylim):
-    dx = line.p2.x - line.p1.x
-    dy = line.p2.y - line.p1.y
-    if dx == 0:
-        if dy>0:
-            y = np.array([ylim[0], ylim[1]])
-        else:
-            y = np.array([ylim[1], ylim[0]])
-        x = np.ones((len(y),)) * line.p2.x
-    else:
-        m = dy / dx
-        if dx>0:
-            x = np.array([xlim[0], xlim[1]])
-        else:
-            x = np.array([xlim[1], xlim[0]])
-        y = m * (x - line.p1.x) + line.p1.y
-    return x, y
-
-
-# def get_lines(lines, tree, parent=None, dir=None, xlim=(0,800), ylim=(0,800)):
-
-def plot_lines(tree, line_stack=[], dir_stack=[], xlim=(0,800), ylim=(0,800)):
-
+def plot_lines(tree, line_stack=[], dir_stack=[], xlim=(0, 800), ylim=(0, 800)):
     if tree:
         line = tree.data[0]
         x, y = extrapolate_line(line, xlim, ylim)
@@ -146,22 +119,22 @@ def plot_lines(tree, line_stack=[], dir_stack=[], xlim=(0,800), ylim=(0,800)):
                 up = vp / np.linalg.norm(vp)
 
                 # Unit Vector for l1
-                v1 = [l1.p1.x-l1.p2.x, l1.p1.y-l1.p2.y]
+                v1 = [l1.p1.x - l1.p2.x, l1.p1.y - l1.p2.y]
                 u1 = v1 / np.linalg.norm(v1)
-                t1 = np.arccos(np.dot(u1,up))
+                t1 = np.arccos(np.dot(u1, up))
 
                 # Unit Vector for l2
-                v2 = [l2.p2.x-l2.p1.x, l2.p2.y-l2.p1.y]
+                v2 = [l2.p2.x - l2.p1.x, l2.p2.y - l2.p1.y]
                 u2 = v2 / np.linalg.norm(v2)
-                t2 = np.arccos(np.dot(u2,up))
+                t2 = np.arccos(np.dot(u2, up))
 
                 if dir == 'left':
-                    if t1 < np.pi/2:
+                    if t1 < np.pi / 2:
                         l = l1
                     else:
                         l = l2
                 elif dir == 'right':
-                    if t1 > np.pi/2:
+                    if t1 > np.pi / 2:
                         l = l1
                     else:
                         l = l2
@@ -174,18 +147,17 @@ def plot_lines(tree, line_stack=[], dir_stack=[], xlim=(0,800), ylim=(0,800)):
         # headwidth=0.2)
         plt.plot(x, y, 'm-', linewidth=0.2)
         # plt.pause(0.1)
-        a=2
-        line_stack .append(c_l)
-        plot_lines(tree.left, line_stack, dir_stack+['left'], xlim)
-        plot_lines(tree.right, line_stack, dir_stack+['right'], ylim)
+        a = 2
+        line_stack.append(c_l)
+        plot_lines(tree.left, line_stack, dir_stack + ['left'], xlim)
+        plot_lines(tree.right, line_stack, dir_stack + ['right'], ylim)
         line_stack.pop()
 
 
-def plot_tree(tree, parent=None, dir=None, xlim=(0,800), ylim=(0,800)):
-
-    if dir=='left':
+def plot_tree(tree, parent=None, dir=None, xlim=(0, 800), ylim=(0, 800)):
+    if dir == 'left':
         tree = tree.left
-    elif dir=='right':
+    elif dir == 'right':
         tree = tree.right
 
     if tree:
@@ -202,29 +174,23 @@ def plot_tree(tree, parent=None, dir=None, xlim=(0,800), ylim=(0,800)):
                 ls = p_l.split(c_l)
                 if ls:
                     l1, l2 = ls
-                    if dir=='left':
+                    if dir == 'left':
                         x, y = ([l1.p1.x, l1.p2.x], [l1.p1.y, l1.p2.y])
-                    elif dir=='right':
+                    elif dir == 'right':
                         x, y = ([l2.p1.x, l2.p2.x], [l2.p1.y, l2.p2.y])
 
-
-
-            # if dx == 0:
-            #     y = np.linspace(max(0, p.y), min(800, p.y), 100)
-            #     x = np.ones((len(y),))*line.p2.x
-            # else:
-            #     m = dy / dx
-            #     x = np.linspace(0, 800, 100)
-            #     y = m*(x-line.p1.x)+line.p1.y
             l = LineSegment(Point(x[0], y[0]), Point(x[1], y[1]), line.Normal)
             midPoint = l.getMidPoint()
             plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
-            plt.plot(x, y,'m-', linewidth=0.1)
+            plt.plot(x, y, 'm-', linewidth=0.1)
         plot_tree(tree, tree.data, 'left')
         plot_tree(tree, tree.data, 'right')
 
-def main():
 
+
+
+
+def main():
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 800
     SHOW_NORMALS = True
@@ -251,12 +217,10 @@ def main():
             plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
         if ANNOTATE_LINES:
             midPoint = line.getMidPoint()
-            plt.text(midPoint.x+line.NormalV.x/10, midPoint.y+line.NormalV.y/10, line.Name)
+            plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
 
     # for point in points:
     #     plt.plot(point.x, point.y, 'or', markersize=4)
-
-
 
     # plot_tree(bsptree.tree)
     plot_lines(bsptree.tree)
@@ -269,12 +233,10 @@ def main():
     waypoint3 = Point(475, 585)
     waypoints = [waypoint1, waypoint2, waypoint3]
 
-
     dest1 = Point(250, 60)
     dest2 = Point(700, 270)
     dest3 = Point(460, 700)
     destinations = [dest1, dest2, dest3]
-
 
     points1 = [point1, waypoint1, dest1]
     points2 = [point1, waypoint2, dest2]
@@ -310,40 +272,21 @@ def main():
     plt.axis('equal')
     plt.xlim((0, SCREEN_WIDTH))
     plt.ylim((0, SCREEN_HEIGHT))
-    plt.legend(loc="upper right", bbox_to_anchor=(0.85,0.99))
+    plt.legend(loc="upper right", bbox_to_anchor=(0.85, 0.99))
 
     # p = Point()
     print(bsptree.find_leaf(Point(40, 400)).data[0].Name)
 
     plt.pause(0.01)
 
-    l = bsptree.render(point1)
-
-    corners = []
-    # r_fov = []
-    # for line in l:
-    #     phi1 = line[0][1]
-    #     phi2 = line[1][1]
-    #     if not len(r_fov):
-    #         r_fov.append(np.amin([line[0][1], line[1][1]]))
-    #         r_fov.append(np.amax([line[0][1], line[1][1]]))
-    #     else:
-    #         for r in r_fov:
-    #             if r_line[0][1]
-    #         r_fov[0] = np.min([line[0][1], line[1][1], r_fov[0]])
-    #         r_fov[1] = np.max([line[0][1], line[1][1], r_fov[1]])
-    #     for i in range(2):
-    #         p = line[i]
-    #         x, y = pol2cart(p[0], p[1])
-    #         x, y = (x+point1.x, y+point1.y)
-    #         plt.plot(x, y, 'sg')
-    #     plt.pause(0.01)
-    #     a = 2
-
-
+    rendered_lines = bsptree.render2(point1)
+    for line in rendered_lines:
+        line.plot(color='r', marker='s')
+    # plot_visibility2(bsptree, point1)
 
     # plt.pause(0.01)
-    a=2
+    plt.show()
+
 
 if __name__ == '__main__':
     main()

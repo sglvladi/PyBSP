@@ -100,6 +100,14 @@ class LineSegment:
         if Normal == -1:
             self.NormalV = Vector(-Dy, Dx)
 
+    @property
+    def points(self):
+        return [self.p1, self.p2]
+
+    @property
+    def xy(self):
+        return np.array([self.p1.x, self.p2.x]), np.array([self.p1.y, self.p2.y])
+
     def getMidPoint(self):
         """returns middle point of our line segment"""
         return Point(

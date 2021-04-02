@@ -4,7 +4,7 @@ from pygame.locals import QUIT
 import numpy as np
 
 from bsp import BSP
-from geometry2 import LineSegment, Point
+from geometry import LineSegment, Point
 
 
 def sign(x): return (x > 0) - (x < 0)

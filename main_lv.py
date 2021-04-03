@@ -125,7 +125,7 @@ def main():
 
     print('Generating tree')
     bsptree.tree.data = copy(lines)
-    bsptree.generate_tree(bsptree.tree, heuristic='min')
+    bsptree.generate_tree(bsptree.tree, heuristic='random')
 
 
     plt.figure(figsize=(8, 6))

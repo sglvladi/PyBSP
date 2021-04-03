@@ -4,6 +4,8 @@ from shapely.ops import linemerge
 from stonesoup.functions import pol2cart
 from stonesoup.types.angle import Bearing
 import matplotlib.pyplot as plt
+import networkx as nx
+from networkx.algorithms.components.connected import connected_components
 
 from geometry import Point, LineSegment
 from angles import mid_angle, to_range2, AngleInterval
@@ -101,128 +103,32 @@ def plot_planes(tree, line_stack=[], dir_stack=[], lines=[], xlim=(0,800), ylim=
         line_stack.pop()
 
 
-def plot_visibility(bsptree, point1):
-    l = bsptree.render2(point1)
+def merge_lists(l):
+    def to_graph(l):
+        G = nx.Graph()
+        for part in l:
+            # each sublist is a bunch of nodes
+            G.add_nodes_from(part)
+            # it also imlies a number of edges:
+            G.add_edges_from(to_edges(part))
+        return G
 
-    # for line in l:
-    #     plt.plot([line.p1.x, line.p2.x], [line.p1.y, line.p2.y], 'sg-')
-    #     plt.pause(0.01)
+    def to_edges(l):
+        """
+            treat `l` as a Graph and returns it's edges
+            to_edges(['a','b','c','d']) -> [(a,b), (b,c),(c,d)]
+        """
+        it = iter(l)
+        last = next(it)
 
-    # Convert to ranges
-    lines_c = []
-    r_fov = []
-    for line in l:
-        a = line.Name
-        p1 = line.p1.to_polar(point1)
-        p2 = line.p2.to_polar(point1)
-        phi1 = p1[1]
-        phi2 = p2[1]
+        for current in it:
+            yield last, current
+            last = current
 
-        if not len(r_fov):
-            # First iteration
-            r_fov.append([p1, p2, line.Name])
-            x1, y1 = pol2cart(p1[0], p1[1])
-            x1, y1 = (x1 + point1.x, y1 + point1.y)
-            x2, y2 = pol2cart(p2[0], p2[1])
-            x2, y2 = (x2 + point1.x, y2 + point1.y)
-            plt.plot([x1, x2], [y1, y2], 'sg-')
-            plt.pause(0.001)
-        else:
-            visible = True
-            for p_1, p_2, name in r_fov:
-                phi_1 = p_1[1]
-                phi_2 = p_2[1]
-                # Check if angles fall within rendered angles
-                phi1_test = test_between(phi1, phi_1, phi_2)
-                phi2_test = test_between(phi2, phi_1, phi_2)
-                if phi1_test and phi2_test:
-                    # If this is true for both angles, then line is not visible
-                    visible = False
-                    break
-                elif phi1_test:
-                    # if phi_1 falls between phi1 and phi2
-                    if test_between(phi_1, phi1, phi2, not_equals=True):
-                        phi1 = phi_1
-                        p = p_1
-                    # elif phi_2 falls between phi1 and phi2
-                    elif test_between(phi_2, phi1, phi2, not_equals=True):
-                        phi1 = phi_2
-                        p = p_2
-                    else:
-                        continue
-                    x, y = pol2cart(p[0], p[1])
-                    x, y = (x + point1.x, y + point1.y)
-                    li = LineSegment(point1, Point(x, y))
-                    l1, l2 = li.split(line)
-
-                    _, a1 = l1.p1.to_polar(point1)
-                    if test_between(a1, phi_1, phi_2):
-                        p1, p2 = (l2.p1.to_polar(point1), l2.p2.to_polar(point1))
-                    else:
-                        p1, p2 = (l1.p1.to_polar(point1), l1.p2.to_polar(point1))
-                elif phi2_test:
-                    if test_between(phi_1, phi1, phi2, not_equals=True):
-                        phi2 = phi_1
-                        p = p_1
-                    # elif phi_2 falls between phi1 and phi2
-                    elif test_between(phi_2, phi1, phi2, not_equals=True):
-                        phi2 = phi_2
-                        p = p_2
-                    else:
-                        continue
-
-                    x, y = pol2cart(p[0], p[1])
-                    x, y = (x + point1.x, y + point1.y)
-                    li = LineSegment(point1, Point(x, y))
-                    l1, l2 = li.split(line)
-
-                    _, a1 = l1.p1.to_polar(point1)
-                    if test_between(a1, phi_1, phi_2):
-                        p1, p2 = (l2.p1.to_polar(point1), l2.p2.to_polar(point1))
-                    else:
-                        p1, p2 = (l1.p1.to_polar(point1), l1.p2.to_polar(point1))
-
-            _, dx = to_range2(p1[1], p2[1])
-            if visible and dx != 0:
-                r_fov.append([p1, p2, line.Name])
-                x1, y1 = pol2cart(p1[0], p1[1])
-                x1, y1 = (x1 + point1.x, y1 + point1.y)
-                x2, y2 = pol2cart(p2[0], p2[1])
-                x2, y2 = (x2 + point1.x, y2 + point1.y)
-                plt.plot([x1, x2], [y1, y2], 'sg-')
-                plt.pause(0.001)
-                bvc = 2
+    G = to_graph(l)
+    return [t for t in connected_components(G)]
 
 
-def merge_fovs(fov):
-    for i, (phi1_1, phi2_1) in enumerate(fov):
-        for j, (phi1_2, phi2_2) in reversed(list(enumerate(fov))):
-            if i == j:
-                continue
-            a = np.equal([phi1_1, phi2_1], [phi1_2, phi2_2])
-            b = np.equal([phi2_1, phi1_1], [phi1_2, phi2_2])
-            if any(a):
-                phi1 = np.array([phi1_1, phi2_1])[~a]
-                phi2 = np.array([phi1_2, phi2_2])[~a]
-                fov[i][1] = np.amin([phi1, phi2])
-                fov[i][0] = np.amax([phi1, phi2])
-                fov.pop(j)
-            elif any(b):
-                phi1 = np.array([phi2_1, phi1_1])[~b]
-                phi2 = np.array([phi1_2, phi2_2])[~b]
-                fov[i][1] = np.amin([phi1, phi2])
-                fov[i][0] = np.amax([phi1, phi2])
-                fov.pop(j)
-        if fov[i][0]<0 and fov[i][1]>0:
-            a = fov[i][0]
-            b = fov[i][1]
-            fov[i][0] = b
-            fov[i][1] = a
-            # if any(np.equal([phi1_1, phi1_2], [phi2_1, phi2_2])) or any(np.equal([phi1_2, phi1_1], [phi2_1, phi2_2])):
-            #     fov[i][0] = np.amin([phi1_1, phi1_2, phi2_1, phi2_2])
-            #     fov[i][1] = np.amax([phi1_1, phi1_2, phi2_1, phi2_2])
-            #     fov.pop(j)
-    return fov
 
 def merge_fovs2(fov):
     valid_fovs = set()
@@ -234,14 +140,15 @@ def merge_fovs2(fov):
                 valid_fovs.add((i, j))
 
     valid_fovs = list(valid_fovs)
-    for i, lines1 in enumerate(valid_fovs):
-        for j, lines2 in reversed(list(enumerate(valid_fovs))):
-            if i == j:
-                continue
-            if bool(set(lines1) & set(lines2)):
-                lines1 = list(set(lines1) | set(lines2))
-                valid_fovs[i] = lines1
-                valid_fovs.pop(j)
+    valid_fovs = merge_lists(valid_fovs)
+    # for i, lines1 in enumerate(valid_fovs):
+    #     for j, lines2 in reversed(list(enumerate(valid_fovs))):
+    #         if i == j:
+    #             continue
+    #         if bool(set(lines1) & set(lines2)):
+    #             lines1 = list(set(lines1) | set(lines2))
+    #             valid_fovs[i] = lines1
+    #             valid_fovs.pop(j)
 
     merged = []
     for ids in valid_fovs:
@@ -255,7 +162,6 @@ def merge_fovs2(fov):
                 if not merged_interval:
                     merged_interval = interval_i
                     processed.append(idx)
-                    asdasd=2
                 else:
                     merged1 = merged_interval.union(interval_i)
                     if merged1:
@@ -279,51 +185,21 @@ def merge_fovs2(fov):
     return merged
 
 
-
 def merge_lines(lines):
-    num_merged = 1
-    lines_copy = lines[:]
-    while num_merged>0:
-        num_merged = 0
-        for i, line1 in enumerate(lines_copy):
-            for j, line2 in reversed(list(enumerate(lines_copy))):
-                if line1.compare(line2) == 'C':
-                    p11, p21 = (line1.p1, line1.p2)
-                    p12, p22 = (line2.p1, line2.p2)
-                    if p21 == p12:
-                        lines_copy[i] = LineSegment(p11, p22, line1.Normal, line1.Name)
-                        lines_copy.pop(j)
-                        line1 = lines_copy[i]
-                        num_merged += 1
-                    elif p22 == p11:
-                        lines_copy[i] = LineSegment(p12, p21, line2.Normal, line2.Name)
-                        lines_copy.pop(j)
-                        line1 = lines_copy[i]
-                        num_merged += 1
-    return lines_copy
-
-def merge_lines2(lines):
     touching_lines = set()
     for i, line1 in enumerate(lines):
         for j, line2 in enumerate(lines):
-            if i==j:
+            if i == j:
                 continue
             p11, p21 = (line1.p1, line1.p2)
             p12, p22 = (line2.p1, line2.p2)
-            if p11 == p12 or p11==p22 or p21==p12 or p21==p22:
-               touching_lines.add((i, j))
+            if p11 == p12 or p11 == p22 or p21 == p12 or p21 == p22:
+                touching_lines.add((i, j))
 
-    touching_lines = list(touching_lines)
-    for i, lines1 in enumerate(touching_lines):
-        for j, lines2 in reversed(list(enumerate(touching_lines))):
-            if i == j:
-                continue
-            if bool(set(lines1) & set(lines2)):
-                lines1 = list(set(lines1) | set(lines2))
-                touching_lines[i] = lines1
-                touching_lines.pop(j)
+    t_lines = merge_lists(touching_lines)
+
     merged = []
-    for ids in touching_lines:
+    for ids in t_lines:
         lines1 = [(line.p1.to_array(), line.p2.to_array()) for i, line in enumerate(lines) if i in ids]
         merged.append(linemerge(lines1))
     merged_idx = set.union(*[set(item) for item in touching_lines])
@@ -332,107 +208,7 @@ def merge_lines2(lines):
             continue
         merged.append(LineString((line.p1.to_array(), line.p2.to_array())))
 
-    adas = 2
     return merged
-
-
-def process_line(line, fov, vis_lines, ref_point, ax=None):
-
-    if ax is None:
-        ax = plt.gca()
-
-    a = line.Name
-    c1, c2 = (line.p1, line.p2)
-    p1, p2 = line.to_polar(ref_point)
-    phi1 = p1[1]
-    phi2 = p2[1]
-
-    if not len(fov):
-        # First iteration
-        vis_lines.append(line)
-        fov.append([np.amax([phi1, phi2]), np.amin([phi1, phi2])])
-        ax.plot([c1.x, c2.x], [c1.y, c2.y], 'sg-')
-    else:
-        visible = True
-        is_pain = False
-        for i, (phi_1, phi_2) in enumerate(fov):
-
-            # Check if line angles fall within rendered angles
-            phi1_test = test_between(phi1, phi_1, phi_2)  # phi_1 <-> phi1 <-> phi_2
-            phi2_test = test_between(phi2, phi_1, phi_2)  # phi_1 <-> phi2 <-> phi_2
-
-            if phi1_test and phi2_test:
-                # If this is true for both angles, then line is not visible
-                visible = False
-                break
-            elif phi1_test or phi2_test:
-                # Elif phi1 or phi2 is within rendered fov, but not both
-                if test_between(phi_1, phi1, phi2, not_equals=True):
-                    # if phi_1 falls between phi1 and phi2 (i.e. phi_2 <-> phi1 <-> phi_1 <-> phi2)
-                    phi1 = phi_1 if phi1_test else phi1
-                    phi2 = phi_1 if phi2_test else phi2
-                elif test_between(phi_2, phi1, phi2, not_equals=True):
-                    phi1 = phi_2 if phi1_test else phi1
-                    phi2 = phi_2 if phi2_test else phi2
-                else:
-                    continue
-
-                # Split existing line, according to fov
-                phi = phi1 if phi1_test else phi2
-                x, y = pol2cart(1., phi)
-                x, y = (x + ref_point.x, y + ref_point.y)
-                li = LineSegment(ref_point, Point(x, y))
-                line = LineSegment(c1, c2, line.Normal, line.Name)
-                l1, l2 = li.split(line)
-
-                _, a1 = l1.p1.to_polar(ref_point)
-                if test_between(a1, phi_1, phi_2):
-                    c1, c2 = (l2.p1, l2.p2)
-                    p1, p2 = l2.to_polar(ref_point)
-                else:
-                    c1, c2 = (l1.p1, l1.p2)
-                    p1, p2 = l1.to_polar(ref_point)
-            # else:
-            #     # Check if rendered angles fall within line angles
-            #     phi_1_test = test_between(phi_1, phi1, phi2)  # phi_1 <-> phi1 <-> phi_2
-            #     phi_2_test = test_between(phi_2, phi1, phi2)  # phi_1 <-> phi2 <-> phi_2
-            #
-            #     if phi_1_test and phi_2_test:
-            #         # Split existing line, according to fov
-            #         x, y = pol2cart(1., phi1)
-            #         x, y = (x + ref_point.x, y + ref_point.y)
-            #         li = LineSegment(ref_point, Point(x, y))
-            #         l1, l2 = li.split(line)
-            #
-            #         _, a1 = l1.p1.to_polar(ref_point)
-            #         if test_between(a1, phi1, phi2):
-            #             x, y = pol2cart(1., phi2)
-            #             x, y = (x + ref_point.x, y + ref_point.y)
-            #             li = LineSegment(ref_point, Point(x, y))
-            #             l2, l3 = li.split(l2)
-            #         else:
-            #             x, y = pol2cart(1., phi2)
-            #             x, y = (x + ref_point.x, y + ref_point.y)
-            #             li = LineSegment(ref_point, Point(x, y))
-            #             l2, l3 = li.split(l1)
-            #         fov, vis_lines = process_line(l1, fov, vis_lines, ref_point, ax)
-            #         fov, vis_lines = process_line(l2, fov, vis_lines, ref_point, ax)
-            #         fov, vis_lines = process_line(l3, fov, vis_lines, ref_point, ax)
-
-        _, dx = to_range2(p1[1], p2[1])
-        if visible and dx != 0 and not is_pain:
-            fov.append([np.amax([p1[1], p2[1]]), np.amin([p1[1], p2[1]])])
-            # x1, y1 = pol2cart(p1[0], p1[1])
-            # x1, y1 = (x1 + ref_point.x, y1 + ref_point.y)
-            # x2, y2 = pol2cart(p2[0], p2[1])
-            # x2, y2 = (x2 + ref_point.x, y2 + ref_point.y)
-            line = LineSegment(c1, c2, line.Normal, line.Name)
-            vis_lines.append(line)
-
-            ax.plot([c1.x, c2.x], [c1.y, c2.y], 'sg-')
-            plt.pause(0.001)
-            asd = 2
-    return fov, vis_lines
 
 
 def plot_visibility2(bsptree, ref_point, ax=None):
@@ -443,115 +219,16 @@ def plot_visibility2(bsptree, ref_point, ax=None):
     vis_lines = []
     fov = []
     for idx, line in enumerate(l):
-        fov, vis_lines = process_line3(line, fov, vis_lines, ref_point, ax)
+        fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
         fov = merge_fovs2(fov)
+        if len(fov) == 1 and fov[0][0].delta==np.pi:
+            break
 
     merged = merge_lines(vis_lines)
-    vfd=2
-    return vis_lines #merged
+    return merged
 
 
-def process_line2(line, fov, vis_lines, ref_point, ax=None):
-
-    if ax is None:
-        ax = plt.gca()
-
-    a = line.Name
-    c1, c2 = (line.p1, line.p2)
-    p1, p2 = line.to_polar(ref_point)
-    phi1 = p1[1]
-    phi2 = p2[1]
-
-    if not len(fov):
-        # First iteration
-        vis_lines.append(line)
-        mid, dx = to_range2(phi1, phi2)
-        fov.append([mid, dx, line.Name])
-        ax.plot([c1.x, c2.x], [c1.y, c2.y], 'sg-')
-    else:
-        visible = True
-        is_pain = False
-        for i, (phi_0, dx, name) in enumerate(fov):
-
-            # Check if line angles fall within rendered angles
-            phi1_test = test2(phi1, phi_0, dx)  # phi_1 <-> phi1 <-> phi_2
-            phi2_test = test2(phi2, phi_0, dx)  # phi_1 <-> phi2 <-> phi_2
-
-            if phi1_test and phi2_test:
-                # If this is true for both angles, then line is not visible
-                visible = False
-                break
-            elif phi1_test:
-                # Elif phi1 is within rendered fov, but not phi2
-                phi0, dx1 = to_range2(phi1, phi2)
-                t1 = test2(phi_0-dx, phi0, dx1, not_equals=True) # phi_0-dx between phi1 and phi2
-                t2 = test2(phi_0+dx, phi0, dx1, not_equals=True) # phi_0+dx between phi1 and phi2
-                if t1:
-                    phi1 = phi_0-dx
-                elif t2:
-                    phi1 = phi_0+dx
-                else:
-                    continue
-
-                # Split existing line, according to fov
-                x, y = pol2cart(1., phi1)
-                x, y = (x + ref_point.x, y + ref_point.y)
-                li = LineSegment(ref_point, Point(x, y))
-                line = LineSegment(c1, c2, line.Normal, line.Name)
-                l1, l2 = li.split(line)
-
-                _, a1 = l1.p1.to_polar(ref_point)
-                if test2(a1, phi_0, dx):
-                    c1, c2 = (l2.p1, l2.p2)
-                    p1, p2 = l2.to_polar(ref_point)
-                else:
-                    c1, c2 = (l1.p1, l1.p2)
-                    p1, p2 = l1.to_polar(ref_point)
-            elif phi2_test:
-                # Elif phi1 is within rendered fov, but not phi2
-                phi0, dx1 = to_range2(phi1, phi2)
-                t1 = test2(phi_0-dx, phi0, dx1, not_equals=True) # phi_0-dx between phi1 and phi2
-                t2 = test2(phi_0+dx, phi0, dx1, not_equals=True) # phi_0+dx between phi1 and phi2
-                if t1:
-                    phi2 = phi_0-dx
-                elif t2:
-                    phi2 = phi_0+dx
-                else:
-                    continue
-
-                # Split existing line, according to fov
-                x, y = pol2cart(1., phi2)
-                x, y = (x + ref_point.x, y + ref_point.y)
-                li = LineSegment(ref_point, Point(x, y))
-                line = LineSegment(c1, c2, line.Normal, line.Name)
-                l1, l2 = li.split(line)
-
-                _, a1 = l1.p1.to_polar(ref_point)
-                if test2(a1, phi_0, dx):
-                    c1, c2 = (l2.p1, l2.p2)
-                    p1, p2 = l2.to_polar(ref_point)
-                else:
-                    c1, c2 = (l1.p1, l1.p2)
-                    p1, p2 = l1.to_polar(ref_point)
-
-        _, dx = to_range2(p1[1], p2[1])
-        if visible and dx != 0 and not is_pain:
-            phi0, dx1 = to_range2(p1[1], p2[1])
-            fov.append([phi0, dx1, line.Name])
-            # x1, y1 = pol2cart(p1[0], p1[1])
-            # x1, y1 = (x1 + ref_point.x, y1 + ref_point.y)
-            # x2, y2 = pol2cart(p2[0], p2[1])
-            # x2, y2 = (x2 + ref_point.x, y2 + ref_point.y)
-            line = LineSegment(c1, c2, line.Normal, line.Name)
-            vis_lines.append(line)
-
-            ax.plot([c1.x, c2.x], [c1.y, c2.y], 'sg-')
-            plt.pause(0.001)
-            asd = 2
-    return fov, vis_lines
-
-
-def process_line3(line, fov, vis_lines, ref_point, ax=None):
+def process_line(line, fov, vis_lines, ref_point, ax=None):
 
     if ax is None:
         ax = plt.gca()
@@ -560,91 +237,65 @@ def process_line3(line, fov, vis_lines, ref_point, ax=None):
     p1, p2 = line.to_polar(ref_point)
     mid, dx = to_range2(p1[1], p2[1])
     interval = AngleInterval(mid, dx)
-    # direction = 1 if np.isclose(interval.min-phi1, 0, atol=1e-10) else 0
 
     if not len(fov):
         # First iteration
         vis_lines.append(line)
         fov.append([interval, line.Name])
-        x, y = line.xy
-        ax.plot(x, y, 'sg-')
+        # x, y = line.xy
+        # ax.plot(x, y, 'sg-')
     else:
         visible = True
-        is_pain = False
-        # i = 0
-        # while i < len(fov):
-        #     interval_i = fov[i][0]
-        #     name = fov[i][1]
+        split_lines = []
         for i, (interval_i, name) in enumerate(fov):
 
             if interval_i.contains_interval(interval):
                 visible = False
                 break
-            # elif interval.contains_interval(interval_i, True):
-            #     # Split existing line, according to fov
-            #     x, y = pol2cart(1., interval_i.min)
-            #     x, y = (x + ref_point.x, y + ref_point.y)
-            #     li = LineSegment(ref_point, Point(x, y))
-            #     l1, l2 = li.split(line)
-            #
-            #     for ll in [l1, l2]:
-            #         fov, vis_lines = process_line3(ll, fov, vis_lines, ref_point, ax)
-            #     visible = False
-
+            elif interval.contains_interval(interval_i, True):
+                # Split existing line, according to fov
+                x, y = pol2cart(1., interval_i.min)
+                x, y = (x + ref_point.x, y + ref_point.y)
+                li = LineSegment(ref_point, Point(x, y))
+                split_lines = li.split(line)
+                visible = False
+                break
             elif interval.intersects(interval_i):
                 if interval_i.contains_angle(interval.min, not_equals=True):
-                    # if direction:
-                    #     phi1 = interval_i.max
-                    # else:
-                    #     phi2 = interval_i.max
-
-                    # Split existing line, according to fov
-                    x, y = pol2cart(1., interval_i.max)
-                    x, y = (x + ref_point.x, y + ref_point.y)
-                    li = LineSegment(ref_point, Point(x, y))
-                    l1, l2 = li.split(line)
-
-                    _, a1 = l1.p1.to_polar(ref_point)
-                    if interval_i.contains_angle(a1, True):
-                        line = l2
-                        p1, p2 = l2.to_polar(ref_point)
-                    else:
-                        line = l1
-                        p1, p2 = l1.to_polar(ref_point)
-
-                    # Generate new line and interval
-                    phi0, dx1 = to_range2(p1[1], p2[1])
-                    interval = AngleInterval(phi0, dx1)
+                    phi = interval_i.max
                 elif interval_i.contains_angle(interval.max, not_equals=True):
-                    # if direction:
-                    #     phi2 = interval_i.min
-                    # else:
-                    #     phi1 = interval_i.min
+                    phi = interval_i.min
+                else:
+                    continue
+                # Split existing line, according to fov
+                x, y = pol2cart(1., phi)
+                x, y = (x + ref_point.x, y + ref_point.y)
+                li = LineSegment(ref_point, Point(x, y))
+                l1, l2 = li.split(line)
 
-                    # Split existing line, according to fov
-                    x, y = pol2cart(1., interval_i.min)
-                    x, y = (x + ref_point.x, y + ref_point.y)
-                    li = LineSegment(ref_point, Point(x, y))
-                    l1, l2 = li.split(line)
+                _, a1 = l1.p1.to_polar(ref_point)
+                if interval_i.contains_angle(a1, True):
+                    line = l2
+                    p1, p2 = l2.to_polar(ref_point)
+                else:
+                    line = l1
+                    p1, p2 = l1.to_polar(ref_point)
 
-                    _, a1 = l1.p1.to_polar(ref_point)
-                    if interval_i.contains_angle(a1, True):
-                        line = l2
-                        p1, p2 = l2.to_polar(ref_point)
-                    else:
-                        line = l1
-                        p1, p2 = l1.to_polar(ref_point)
+                # Generate new line and interval
+                phi0, dx1 = to_range2(p1[1], p2[1])
+                interval = AngleInterval(phi0, dx1)
 
-                    # Generate new line and interval
-                    phi0, dx1 = to_range2(p1[1], p2[1])
-                    interval = AngleInterval(phi0, dx1)
-            i += 1
-
-        if visible and not is_pain:
+        if visible:
             fov.append([interval, line.Name])
             vis_lines.append(line)
-            x, y = line.xy
-            ax.plot(x, y, 'sg-')
-            plt.pause(0.001)
-            asd = 2
+
+            # Plot line
+            # x, y = line.xy
+            # ax.plot(x, y, 'sg-')
+            # plt.pause(0.001)
+
+        for line in split_lines:
+            fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
+            fov = merge_fovs2(fov)
+
     return fov, vis_lines

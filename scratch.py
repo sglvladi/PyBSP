@@ -7,7 +7,7 @@ from shapely.ops import linemerge
 
 from bsp import BSP, BSP2
 from geometry import LineSegment, Point
-from utils import plot_planes, merge_lines2
+from utils import plot_planes, plot_visibility2
 
 
 def merc_from_arrays(lats, lons):
@@ -19,6 +19,7 @@ def merc_from_arrays(lats, lons):
 
 
 def generate_ref_point(polygons):
+    # return Point(1.6019e+6, 4.3e+6)
     return Point(1.593e+6, 4.3e+6)
 
 
@@ -147,14 +148,15 @@ def main():
 
     plt.plot(point1.x, point1.y, 'ko')
     print("rendering..", end='')
-    rendered_lines = bsptree.render2(point1)
+    # rendered_lines = bsptree.render2(point1)
+    rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
     print("done")
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    idx = [10, 13, 14, 15, 17, 23, 24, 25, 27, 31, 32, 33, 34, 35, 36, 37, 38]
-    rendered_lines = [line for i, line in enumerate(rendered_lines) if i not in idx]
-    merged_lines = merge_lines2(rendered_lines)
+    # idx = [10, 13, 14, 15, 17, 23, 24, 25, 27, 31, 32, 33, 34, 35, 36, 37, 38]
+    # rendered_lines = [line for i, line in enumerate(rendered_lines) if i not in idx]
+    # merged_lines = merge_lines2(rendered_lines)
 
-    for line in merged_lines:
+    for line in rendered_lines:
         x, y = line.xy
         plt.plot(x, y, 'r')
         for point in line.boundary:

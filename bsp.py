@@ -1,5 +1,5 @@
 from geometry import LineSegment, Point
-from utils import extrapolate_line, test_between, to_range2, merge_lines
+from utils import extrapolate_line, test_between, to_range2, merge_lines, process_line, merge_fovs2
 import random
 import numpy as np
 import networkx as nx
@@ -473,73 +473,7 @@ class BSP:
                     return tree
                 tree = tree.right
 
-    def render(self, p):
-        t = self.find_leaf(p)
-
-        r_lines = self._render_child(t, p)
-        parent = t.parent
-
-        p_lines = self._render_parent(parent, t, p)
-
-        return r_lines + p_lines
-
-    def _render_parent(self, parent, child, p):
-        a = parent.data[0].Name
-        r_lines = parent.data
-
-        if parent.left == child:
-            if parent.right:
-                r_lines = r_lines + self._render_child(parent.right, p)
-        else:
-            if parent.left:
-                r_lines = r_lines + self._render_child(parent.left, p)
-
-        p_lines = []
-        if not parent.is_root():
-            p_lines = self._render_parent(parent.parent, parent, p)
-
-        r_lines = r_lines + p_lines
-        return r_lines
-
-    def _render_child(self, child, p):
-        a = child.data[0].Name
-        r_lines = []
-        if child.is_leaf():
-            r_lines = child.data
-        else:
-            r_lines_left = []
-            r_lines_right = []
-
-            r_lines = child.data
-
-            if child.left and child.right:
-                min_left = np.inf
-                min_right = np.inf
-                for line in child.left.data:
-                    dist = p.get_distance(line.getMidPoint())
-                    if dist < min_left:
-                        min_left = dist
-                for line in child.right.data:
-                    dist = p.get_distance(line.getMidPoint())
-                    if dist < min_right:
-                        min_right = dist
-                r_lines_left = self._render_child(child.left, p)
-                r_lines_right = self._render_child(child.right, p)
-
-                if min_left<=min_right:
-                    r_lines = r_lines + r_lines_left + r_lines_right
-                else:
-                    r_lines = r_lines + r_lines_right + r_lines_left
-            else:
-                if child.left:
-                    r_lines_left = self._render_child(child.left, p)
-                if child.right:
-                    r_lines_right = self._render_child(child.right, p)
-
-                r_lines =  r_lines + r_lines_left + r_lines_right
-        return r_lines
-
-    def render2(self, ref_point):
+    def render2(self, ref_point, ax=None):
         # Find the leaf node
         leaf = self.find_leaf(ref_point)
 
@@ -550,71 +484,19 @@ class BSP:
         if not leaf.is_root():
             p_lines = self._render_parent2(parent, leaf, ref_point)
 
-
         l = r_lines + p_lines
 
-        return l
+        # return l
 
         # Convert to ranges
         vis_lines = []
         fov = []
-        for line in l:
-            a = line.Name
-            c1, c2 = (line.p1, line.p2)
-            p1, p2 = line.to_polar(ref_point)
-            phi1 = p1[1]
-            phi2 = p2[1]
+        for idx, line in enumerate(l):
+            fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
+            fov = merge_fovs2(fov)
+            if len(fov) == 1 and fov[0].delta == np.pi:
+                break
 
-            if not len(fov):
-                # First iteration
-                vis_lines.append(line)
-                fov.append([np.amax([phi1, phi2]), np.amin([phi1, phi2])])
-            else:
-                visible = True
-                for i, (phi_1, phi_2) in enumerate(fov):
-
-                    # Check if line angles fall within rendered angles
-                    phi1_test = test_between(phi1, phi_1, phi_2)  # phi_1 <-> phi1 <-> phi_2
-                    phi2_test = test_between(phi2, phi_1, phi_2)  # phi_1 <-> phi2 <-> phi_2
-
-                    if phi1_test and phi2_test:
-                        # If this is true for both angles, then line is not visible
-                        visible = False
-                        break
-                    elif phi1_test or phi2_test:
-                        # Elif phi1 or phi2 is within rendered fov, but not both
-                        if test_between(phi_1, phi1, phi2, not_equals=True):
-                            # if phi_1 falls between phi1 and phi2 (i.e. phi_2 <-> phi1 <-> phi_1 <-> phi2)
-                            phi1 = phi_1 if phi1_test else phi1
-                            phi2 = phi_1 if phi2_test else phi2
-                        elif test_between(phi_2, phi1, phi2, not_equals=True):
-                            phi1 = phi_2 if phi1_test else phi1
-                            phi2 = phi_2 if phi2_test else phi2
-                        else:
-                            continue
-
-                        # Split existing line, according to fov
-                        phi = phi1 if phi1_test else phi2
-                        x, y = pol2cart(1., phi)
-                        x, y = (x + ref_point.x, y + ref_point.y)
-                        li = LineSegment(ref_point, Point(x, y))
-                        l1, l2 = li.split(line)
-
-                        _, a1 = l1.p1.to_polar(ref_point)
-                        if test_between(a1, phi_1, phi_2):
-                            c1, c2 = (l2.p1, l2.p2)
-                            p1, p2 = l2.to_polar(ref_point)
-                        else:
-                            c1, c2 = (l1.p1, l1.p2)
-                            p1, p2 = l1.to_polar(ref_point)
-
-                _, dx = to_range2(p1[1], p2[1])
-                if visible and dx != 0:
-                    fov.append([np.amax([p1[1], p2[1]]), np.amin([p1[1], p2[1]])])
-                    line = LineSegment(c1, c2, line.Normal, line.Name)
-                    vis_lines.append(line)
-
-        # return vis_lines
         merged = merge_lines(vis_lines)
         return merged
 

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from stonesoup.functions import cart2pol
 from stonesoup.types.angle import Bearing
 
+from angles import to_range2, AngleInterval
 
 def sign(x): return int(x > 0) - int(x < 0)
 
@@ -20,6 +21,9 @@ class Point:
 
     def __eq__(self, other):
         return np.array_equal(self.to_array(), other.to_array())
+
+    def __repr__(self):
+        return "Point(x={}, y={})".format(self.x, self.y)
 
     def print(self):
         print(self.x, ' ', self.y)
@@ -74,6 +78,9 @@ class Vector:
         self.x = x
         self.y = y
 
+    def __repr__(self):
+        return "Vector(x={}, y={})".format(self.x, self.y)
+
     def to_array(self):
         return np.array([self.x, self.y])
 
@@ -99,6 +106,10 @@ class LineSegment:
         self.NormalV = Vector(Dy, -Dx)
         if Normal == -1:
             self.NormalV = Vector(-Dy, Dx)
+
+    def __repr__(self):
+        return "LineSegment(Name={}, p1={}, p2={}, Normal={}, NormalV={})".format(self.Name, self.p1, self.p2,
+                                                                                  self.Normal, self.NormalV)
 
     @property
     def points(self):
@@ -163,9 +174,22 @@ class LineSegment:
 
     def split(self, other):
         """
-        :param other: LineSegment
-        :return: returns two LineSegments if LineSegment in 'self' (as an infinite line segment) partitions 'otherLine' in space partitioning,
-        otherwise returns None
+        Split other line segment, based on intersection of plane defined by line.
+
+        Parameters
+        ----------
+        other: LineSegment
+            Line to be split
+
+        Returns
+        -------
+        LineSegments or None
+            Two LineSegments if LineSegment in 'self' (as an infinite line segment) partitions 'otherLine' in space
+            partitioning, otherwise returns None
+
+        Notes
+        -----
+        Solution taken from: http://paulbourke.net/geometry/pointlineplane/
         """
 
         numer = np.dot(self.NormalV.to_array(),
@@ -226,3 +250,8 @@ class LineSegment:
         p2 = (rho, Bearing(phi))
 
         return p1, p2
+
+    def to_interval(self, ref_point=None):
+        p1, p2 = self.to_polar(ref_point)
+        mid, dx = to_range2(p1[1], p2[1])
+        return AngleInterval(mid, dx, self.Name)

@@ -153,7 +153,7 @@ def merge_fovs2(fov):
     merged = []
     for ids in valid_fovs:
         merged_interval = None
-        names = []
+        names = set()
         processed = []
         while len(ids):
             for idx in ids:
@@ -168,9 +168,11 @@ def merge_fovs2(fov):
                         merged_interval = merged1
                         processed.append(idx)
                         asda=2
+                if isinstance(name_i, str):
+                    names.add(name_i)
+                else:
+                    names |= name_i
             ids = [idx for idx in ids if idx not in processed]
-
-        names.append(name_i)
         merged.append([merged_interval, names])
 
     if len(valid_fovs):
@@ -234,9 +236,7 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
         ax = plt.gca()
 
     a = line.Name
-    p1, p2 = line.to_polar(ref_point)
-    mid, dx = to_range2(p1[1], p2[1])
-    interval = AngleInterval(mid, dx)
+    interval = line.to_interval(ref_point)
 
     if not len(fov):
         # First iteration
@@ -268,7 +268,7 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
                 else:
                     continue
                 # Split existing line, according to fov
-                x, y = pol2cart(1., phi)
+                x, y = pol2cart(1e15, phi)
                 x, y = (x + ref_point.x, y + ref_point.y)
                 li = LineSegment(ref_point, Point(x, y))
                 l1, l2 = li.split(line)
@@ -293,6 +293,7 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
             # x, y = line.xy
             # ax.plot(x, y, 'sg-')
             # plt.pause(0.001)
+            aas=2
 
         for line in split_lines:
             fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)

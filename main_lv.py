@@ -5,7 +5,7 @@ from shapely.geometry import Polygon
 
 from bsp import BSP
 from geometry import LineSegment, Point
-from utils import plot_planes, plot_visibility2, merge_lines2
+from utils import plot_planes, plot_visibility2
 
 # a = np.random.randint(10000)
 # print(a)
@@ -132,6 +132,7 @@ def main():
     bsptree.draw_nx(plt.gca(), show_labels=False)
 
     plt.figure(figsize=(8, 6))
+    plot_planes(bsptree.tree)
     for line in lines:
         x = [line.p1.x, line.p2.x]
         y = [line.p1.y, line.p2.y]
@@ -144,7 +145,7 @@ def main():
             plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
 
     plot_planes(bsptree.tree)
-    # plot_waypoints(point1, bsptree)
+    plot_waypoints(point1, bsptree)
     plt.axis('equal')
     plt.xlim((0, SCREEN_WIDTH))
     plt.ylim((0, SCREEN_HEIGHT))
@@ -156,10 +157,10 @@ def main():
 
     plt.plot(point1.x, point1.y, 'ko')
     rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    # rendered_lines = bsptree.render2(point1)
-    merged_lines = merge_lines2(rendered_lines)
+    # rendered_lines = bsptree.render2(point1)333333333333333333333333333313
+    # merged_lines = merge_lines2(rendered_lines)
 
-    for line in merged_lines:
+    for line in rendered_lines:
         x, y = line.xy
         plt.plot(x, y, 'r')
         for point in line.boundary:

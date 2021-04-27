@@ -4,6 +4,10 @@ import numpy as np
 from copy import copy
 from shapely.geometry import Polygon, LineString
 from shapely.ops import linemerge
+import cProfile as profile
+# In outer section of code
+pr = profile.Profile()
+pr.disable()
 
 from bsp import BSP, BSP2
 from geometry import LineSegment, Point
@@ -19,11 +23,12 @@ def merc_from_arrays(lats, lons):
 
 
 def generate_ref_point(polygons):
-    # return Point(1.6019e+6, 4.3e+6)
-    return Point(1.593e+6, 4.3e+6)
+    return Point(1.6019e+6, 4.3e+6)
+    # return Point(1.593e+6, 4.3e+6)
 
 
 def main():
+    SHOW_PLANES = True
     TARGET = "MALTA"
     LIMITS = {
         "TEST": {
@@ -130,31 +135,36 @@ def main():
     bsptree.generate_tree(bsptree.tree, heuristic='even')
     point1 = generate_ref_point(polygons)
 
+    # Plot tree graph
     plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=False)
 
+    # Plot scene
     plt.figure(figsize=(8, 6))
+    plt.pause(0.01)
     for line in lines:
         x = (line.p1.x, line.p2.x)
         y = (line.p1.y, line.p2.y)
-        # p1 = (line.p1.x, line.p1.y)
-        # p2 = (line.p2.x, line.p2.y)
-        # if p1==p2:
-        #     a=2
         plt.plot(x, y, 'k-')
+        # midPoint = line.getMidPoint()
+        # plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
 
         # midPoint = line.getMidPoint()
         # plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
+    xlim = plt.xlim()
+    ylim = plt.ylim()
+    if SHOW_PLANES:
+        ls = []
+        plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
+        plt.xlim(xlim)
+        plt.ylim(ylim)
 
     plt.plot(point1.x, point1.y, 'ko')
     print("rendering..", end='')
-    # rendered_lines = bsptree.render2(point1)
+    pr.enable()
     rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    pr.disable()
     print("done")
-    # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    # idx = [10, 13, 14, 15, 17, 23, 24, 25, 27, 31, 32, 33, 34, 35, 36, 37, 38]
-    # rendered_lines = [line for i, line in enumerate(rendered_lines) if i not in idx]
-    # merged_lines = merge_lines2(rendered_lines)
 
     for line in rendered_lines:
         x, y = line.xy
@@ -163,38 +173,18 @@ def main():
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
-    # for i, line in enumerate(rendered_lines):
-    #     # if i in idx:
-    #     #     continue
-    #     line.plot(color='r')
-    #     for point in line.points:
-    #         x = [point.x, point1.x]
-    #         y = [point.y, point1.y]
-    #         plt.plot(x, y, 'k--', linewidth=0.2)
-    #     # plt.pause(0.01)
-    #     aas=2
-    # bsptree.draw_nx()
     plt.pause(0.01)
 
-    # bsptree2 = BSP2(lines, heuristic='even')
-    # bsptree2.draw_nx()
+
     print(bsptree.tree.print())
-    xlim = plt.xlim()
-    ylim = plt.ylim()
-
-    ls = []
-    # plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
-    plt.xlim(xlim)
-    plt.ylim(ylim)
-
-
     print(bsptree.find_leaf(Point(1.58, 4.275)).data[0].Name)
     print(bsptree.depth())
-    #
-    # print('Plotting')
-    # x, y = target_polygon.exterior.xy
-    # plt.plot(x, y)
+
+    print("[INFO]: Dumping Profiler stats")
+    pr.dump_stats('profile_{}.pstat'.format(1))
+
     plt.show()
+
 
 if __name__ == '__main__':
     main()

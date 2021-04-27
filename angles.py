@@ -26,9 +26,10 @@ def to_range2(a1, a2):
 
 
 class AngleInterval:
-    def __init__(self, mid, delta):
+    def __init__(self, mid, delta, name=None):
         self.mid = Bearing(mid)
         self.delta = float(delta)
+        self.name=name
         if self.delta < 0:
             warnings.warn("Negative delta provided, value with be adjusted...")
         elif self.delta == 0:
@@ -36,6 +37,8 @@ class AngleInterval:
         elif self.delta > np.pi:
             raise ValueError("Invalid delta value provided: Delta cannot be highrt than pi!")
 
+    def __repr__(self):
+        return "AngleInterval(mid={}, delta={}, name={})".format(self.mid, self.delta, self.name)
 
     @property
     def min(self):
@@ -54,8 +57,8 @@ class AngleInterval:
         b = (alpha + 2*np.pi - delta < X < 2*np.pi)
         c = (0 < X < alpha - 2 * np.pi + delta)
         # Equals with account for numerical precision errors
-        d = (np.isclose(float(self.mid - self.delta), float(angle),  atol=1e-10)
-             or np.isclose(float(self.mid + self.delta), float(angle),  atol=1e-10))
+        d = (math.isclose(float(self.mid - self.delta), float(angle),  abs_tol=1e-10)
+             or math.isclose(float(self.mid + self.delta), float(angle),  abs_tol=1e-10))
 
         if not_equals:
             return (a or b or c) and not d

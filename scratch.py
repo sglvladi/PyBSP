@@ -9,9 +9,9 @@ import cProfile as profile
 pr = profile.Profile()
 pr.disable()
 
-from bsp import BSP, BSP2
+from bsp import BSP, BSP2, BSP3
 from geometry import LineSegment, Point
-from utils import plot_planes, plot_visibility2
+from utils import plot_planes, plot_visibility2, sort_fovs
 
 
 def merc_from_arrays(lats, lons):
@@ -23,8 +23,9 @@ def merc_from_arrays(lats, lons):
 
 
 def generate_ref_point(polygons):
-    return Point(1.6019e+6, 4.3e+6)
-    # return Point(1.593e+6, 4.3e+6)
+    # return Point(1.5955e+06, 4.3e+06)
+    # return Point(1.6019e+6, 4.305e+6)
+    return Point(1.593e+6, 4.3e+6)
 
 
 def main():
@@ -129,19 +130,13 @@ def main():
                 if p11 != p22:
                     lines.append(LineSegment(p1, p2, 1, str(len(lines))))
 
-    print('Creating tree')
-    bsptree = BSP()
-    bsptree.tree.data = copy(lines)
-    bsptree.generate_tree(bsptree.tree, heuristic='even')
+    # bsptree = BSP3()
+    # bsptree.tree.data = copy(lines)
+    # bsptree.generate_tree(bsptree.tree, heuristic='even')
     point1 = generate_ref_point(polygons)
-
-    # Plot tree graph
-    plt.figure(figsize=(8, 6))
-    bsptree.draw_nx(plt.gca(), show_labels=False)
 
     # Plot scene
     plt.figure(figsize=(8, 6))
-    plt.pause(0.01)
     for line in lines:
         x = (line.p1.x, line.p2.x)
         y = (line.p1.y, line.p2.y)
@@ -153,6 +148,9 @@ def main():
         # plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
     xlim = plt.xlim()
     ylim = plt.ylim()
+
+    print('Creating tree')
+    bsptree = BSP3(lines, heuristic='even', bounds=(xlim, ylim))
     if SHOW_PLANES:
         ls = []
         plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
@@ -160,24 +158,49 @@ def main():
         plt.ylim(ylim)
 
     plt.plot(point1.x, point1.y, 'ko')
-    print("rendering..", end='')
+    plt.pause(0.01)
+
+    print("Rendering...", end='')
     pr.enable()
-    rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    rendered_lines = bsptree.render2(point1)
     pr.disable()
     print("done")
 
     for line in rendered_lines:
-        x, y = line.xy
-        plt.plot(x, y, 'r')
-        for point in line.boundary:
+        line.plot(color='r')
+        for point in line.linestring.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.01)
 
+    print("Finding leaf...", end='')
+    a = bsptree.find_leaf(point1)
+    print("Done")
+    a.polygon.plot(color='r')
+    plt.pause(0.01)
 
-    print(bsptree.tree.print())
-    print(bsptree.find_leaf(Point(1.58, 4.275)).data[0].Name)
+    # Plot tree graph
+    plt.figure(figsize=(8, 6))
+    bsptree.draw_nx(plt.gca(), show_labels=False)
+
+    fig = plt.figure()
+    ax = plt.gca()
+    fovs = []
+    for line in rendered_lines:
+        fovs.append(line.to_interval(point1))
+
+    fovs = sort_fovs(fovs)
+    for fov in fovs:
+        color = np.random.rand(1, 3)
+        fov.plot(ax=ax, fc=color)
+        # plt.pause(0.01)
+        a = 2
+
+
+    # print(bsptree.tree.print())
+    print(bsptree.find_leaf(Point(1.58, 4.275)))
     print(bsptree.depth())
 
     print("[INFO]: Dumping Profiler stats")

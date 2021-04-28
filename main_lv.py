@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from copy import copy
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiLineString, shape
 
-from bsp import BSP
+from bsp import BSP, BSP3
 from geometry import LineSegment, Point
-from utils import plot_planes, plot_visibility2
+from utils import plot_planes, plot_visibility2, sort_fovs
 
 # a = np.random.randint(10000)
 # print(a)
@@ -108,7 +108,10 @@ def plot_waypoints(point1, bsptree):
 
 
 def generate_ref_point(polygons):
-    return Point(40, 400)
+    # return Point(300, 300)
+    return Point(400, 218)
+    # return Point(40, 400)
+
 
 
 def main():
@@ -117,16 +120,25 @@ def main():
     SHOW_NORMALS = False
     ANNOTATE_LINES = True
 
-    bsptree = BSP()
     print('Generating line segments')
     lines, polygons = generate_polygons()
     point1 = generate_ref_point(polygons)
 
+    ## Get all 'LineString' objects
+    # lines2 = [line.linestring for line in lines]
+    # ## Convert to 'MultiString'
+    # lines2 = MultiLineString([line.xy for line in lines2])
+    # ## Convert Lines to Polygons by applying a tiny buffer
+    # lines = lines2.buffer(0.0000000000001)
+    # ## Get outer boundary of the lines as a polygon
+    # boundary = lines2.convex_hull
+    # ## Get a difference to generate a multipolygon
+    # multipolygons = boundary.difference(lines2)
 
     print('Generating tree')
-    bsptree.tree.data = copy(lines)
-    bsptree.generate_tree(bsptree.tree, heuristic='random')
-
+    bsptree = BSP3(lines, heuristic='even')
+    # bsptree.tree.data = copy(lines)
+    # bsptree.generate_tree(bsptree.tree, heuristic='random')
 
     plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=False)
@@ -151,22 +163,44 @@ def main():
     plt.ylim((0, SCREEN_HEIGHT))
 
     # p = Point()
-    print(bsptree.find_leaf(Point(40, 400)).data[0].Name)
+    #print(bsptree.find_leaf(Point(40, 400)).data[0].Name)
     print(bsptree.depth())
     plt.pause(0.01)
 
     plt.plot(point1.x, point1.y, 'ko')
-    rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    rendered_lines = bsptree.render2(point1)
     # rendered_lines = bsptree.render2(point1)333333333333333333333333333313
     # merged_lines = merge_lines2(rendered_lines)
 
     for line in rendered_lines:
-        x, y = line.xy
+        x, y = line.linestring.xy
         plt.plot(x, y, 'r')
-        for point in line.boundary:
+        for point in line.linestring.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
+    plt.pause(0.01)
+
+    a = bsptree.find_leaf(point1)
+    a.polygon.plot(color='r')
+    plt.pause(0.01)
+
+    # p = a.area()
+
+
+    fig = plt.figure()
+    ax = plt.gca()
+    fovs = []
+    for line in rendered_lines:
+        fovs.append(line.to_interval(point1))
+
+    fovs = sort_fovs(fovs)
+    for fov in fovs:
+        color = np.random.rand(1, 3)
+        fov.plot(ax=ax, fc=color)
+        plt.pause(0.01)
+        a = 2
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
     # for line in rendered_lines:
     #     line.plot(color='r', marker='s')

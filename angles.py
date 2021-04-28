@@ -29,7 +29,9 @@ class AngleInterval:
     def __init__(self, mid, delta, name=None):
         self.mid = Bearing(mid)
         self.delta = float(delta)
-        self.name=name
+        if not isinstance(name, list):
+            name = [name]
+        self.name = name
         if self.delta < 0:
             warnings.warn("Negative delta provided, value with be adjusted...")
         elif self.delta == 0:
@@ -100,7 +102,8 @@ class AngleInterval:
             # Fully matching or mirror (accounting for numerical precision)
             if not(np.isclose(float(self.mid-other.mid), 0, atol=1e-10)):
                 # Mirror
-                return AngleInterval(0, np.pi)
+                name = list(set(self.name).union(set(other.name)))
+                return AngleInterval(0, np.pi, name)
             else:
                 # Matching
                 return self
@@ -122,7 +125,8 @@ class AngleInterval:
             elif dx == np.pi / 2:
                 # mid_angle fails when dx is exactly 180, hence this fix
                 mid = mid_angle(min+0.1, max)-0.05
-            return AngleInterval(mid, dx)
+            name = list(set(self.name).union(set(other.name)))
+            return AngleInterval(mid, dx, name)
         elif b and c:
             # other.max and self.min intersect
             min = other.min
@@ -135,7 +139,8 @@ class AngleInterval:
             elif dx == np.pi / 2:
                 # mid_angle fails when dx is exactly 180, hence this fix
                 mid = mid_angle(min + 0.1, max) - 0.05
-            return AngleInterval(mid, dx)
+            name = list(set(self.name).union(set(other.name)))
+            return AngleInterval(mid, dx, name)
 
     def plot(self, ax=None, **kwargs):
         if not ax:

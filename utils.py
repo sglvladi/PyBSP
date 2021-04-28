@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.algorithms.components.connected import connected_components
 
-from geometry import Point, LineSegment
+from geometry import Point, LineSegment, MergedLine
 from angles import mid_angle, to_range2, AngleInterval
 
 def test2(X, alpha, delta, not_equals=False):
@@ -132,8 +132,8 @@ def merge_lists(l):
 
 def merge_fovs2(fov):
     valid_fovs = set()
-    for i, (interval_i, name_i) in enumerate(fov):
-        for j, (interval_j, name_j) in reversed(list(enumerate(fov))):
+    for i, interval_i in enumerate(fov):
+        for j, interval_j in reversed(list(enumerate(fov))):
             if i == j:
                 continue
             if interval_i.intersects(interval_j):
@@ -157,8 +157,7 @@ def merge_fovs2(fov):
         processed = []
         while len(ids):
             for idx in ids:
-                interval_i = fov[idx][0]
-                name_i = fov[idx][1]
+                interval_i = fov[idx]
                 if not merged_interval:
                     merged_interval = interval_i
                     processed.append(idx)
@@ -168,12 +167,12 @@ def merge_fovs2(fov):
                         merged_interval = merged1
                         processed.append(idx)
                         asda=2
-                if isinstance(name_i, str):
-                    names.add(name_i)
-                else:
-                    names |= name_i
+                # if isinstance(name_i, str):
+                #     names.add(name_i)
+                # else:
+                #     names |= name_i
             ids = [idx for idx in ids if idx not in processed]
-        merged.append([merged_interval, names])
+        merged.append(merged_interval)
 
     if len(valid_fovs):
         merged_idx = set.union(*[set(item) for item in valid_fovs])
@@ -202,13 +201,15 @@ def merge_lines(lines):
 
     merged = []
     for ids in t_lines:
-        lines1 = [(line.p1.to_array(), line.p2.to_array()) for i, line in enumerate(lines) if i in ids]
-        merged.append(linemerge(lines1))
+        points = [(line.p1.to_array(), line.p2.to_array()) for i, line in enumerate(lines) if i in ids]
+        lines1 = [line for i, line in enumerate(lines) if i in ids]
+        linestring = linemerge(points)
+        merged.append(MergedLine(lines1, linestring))
     merged_idx = set.union(*[set(item) for item in touching_lines])
     for i, line in enumerate(lines):
         if i in merged_idx:
             continue
-        merged.append(LineString((line.p1.to_array(), line.p2.to_array())))
+        merged.append(MergedLine([line], LineString((line.p1.to_array(), line.p2.to_array()))))
 
     return merged
 
@@ -223,7 +224,7 @@ def plot_visibility2(bsptree, ref_point, ax=None):
     for idx, line in enumerate(l):
         fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
         fov = merge_fovs2(fov)
-        if len(fov) == 1 and fov[0][0].delta==np.pi:
+        if len(fov) == 1 and fov[0].delta==np.pi:
             break
 
     merged = merge_lines(vis_lines)
@@ -241,20 +242,20 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
     if not len(fov):
         # First iteration
         vis_lines.append(line)
-        fov.append([interval, line.Name])
+        fov.append(interval)
         # x, y = line.xy
         # ax.plot(x, y, 'sg-')
     else:
         visible = True
         split_lines = []
-        for i, (interval_i, name) in enumerate(fov):
+        for i, interval_i in enumerate(fov):
 
             if interval_i.contains_interval(interval):
                 visible = False
                 break
             elif interval.contains_interval(interval_i, True):
                 # Split existing line, according to fov
-                x, y = pol2cart(1., interval_i.min)
+                x, y = pol2cart(1e15, interval_i.min)
                 x, y = (x + ref_point.x, y + ref_point.y)
                 li = LineSegment(ref_point, Point(x, y))
                 split_lines = li.split(line)
@@ -276,17 +277,18 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
                 _, a1 = l1.p1.to_polar(ref_point)
                 if interval_i.contains_angle(a1, True):
                     line = l2
-                    p1, p2 = l2.to_polar(ref_point)
+                    # p1, p2 = l2.to_polar(ref_point)
                 else:
                     line = l1
-                    p1, p2 = l1.to_polar(ref_point)
+                    # p1, p2 = l1.to_polar(ref_point)
 
                 # Generate new line and interval
-                phi0, dx1 = to_range2(p1[1], p2[1])
-                interval = AngleInterval(phi0, dx1)
+                # phi0, dx1 = to_range2(p1[1], p2[1])
+                # interval = AngleInterval(phi0, dx1)
+                interval = line.to_interval(ref_point)
 
         if visible:
-            fov.append([interval, line.Name])
+            fov.append(interval)
             vis_lines.append(line)
 
             # Plot line
@@ -300,3 +302,9 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
             fov = merge_fovs2(fov)
 
     return fov, vis_lines
+
+
+def sort_fovs(fovs):
+    sorted_idx = np.argsort([fov.mid for fov in fovs])
+    sorted = [fovs[idx] for idx in sorted_idx]
+    return sorted

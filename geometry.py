@@ -1,8 +1,12 @@
 import math
 import numpy as np
+import shapely
 import matplotlib.pyplot as plt
-from stonesoup.functions import cart2pol
+from matplotlib.patches import Polygon as pltPolygon
+from matplotlib.collections import PatchCollection
+from stonesoup.functions import cart2pol, pol2cart
 from stonesoup.types.angle import Bearing
+from shapely.geometry import LineString
 
 from angles import to_range2, AngleInterval
 
@@ -12,18 +16,17 @@ def sign(x): return int(x > 0) - int(x < 0)
 DoubleTolerance = 1e-5
 
 
-class Point:
+class Point(shapely.geometry.Point):
     """2D cartesian coordinate representation of point"""
-
-    def __init__(self, x=0, y=0):
-        self.x = x
-        self.y = y
 
     def __eq__(self, other):
         return np.array_equal(self.to_array(), other.to_array())
 
     def __repr__(self):
         return "Point(x={}, y={})".format(self.x, self.y)
+
+    def __str__(self):
+        return self.__repr__()
 
     def print(self):
         print(self.x, ' ', self.y)
@@ -118,6 +121,10 @@ class LineSegment:
     @property
     def xy(self):
         return np.array([self.p1.x, self.p2.x]), np.array([self.p1.y, self.p2.y])
+
+    @property
+    def linestring(self):
+        return LineString((self.p1.to_array(), self.p2.to_array()))
 
     def getMidPoint(self):
         """returns middle point of our line segment"""
@@ -255,3 +262,68 @@ class LineSegment:
         p1, p2 = self.to_polar(ref_point)
         mid, dx = to_range2(p1[1], p2[1])
         return AngleInterval(mid, dx, self.Name)
+
+
+class MergedLine:
+    def __init__(self, lines, linestring):
+        self.lines = lines
+        self.linestring = linestring
+
+    def __repr__(self):
+        return "MergedLine(names={}, lines={}, linestring={})".format(self.names, self.lines, self.linestring)
+
+    @property
+    def names(self):
+        return [line.Name for line in self.lines]
+
+    def to_interval(self, ref_point=None):
+        points = []
+        for point in self.linestring.boundary:
+            points.append(Point(point.x, point.y))
+        p1, p2 = (points[0].to_polar(ref_point), points[1].to_polar(ref_point))
+        mid, dx = to_range2(p1[1], p2[1])
+        x, y = pol2cart(1e15, mid)
+        x, y = (x + ref_point.x, y + ref_point.y)
+        li = LineSegment(ref_point, Point(x, y))
+        if not li.linestring.intersects(self.linestring):
+            a1 = mid - dx
+            dx2 = np.abs(a1 - (mid + np.pi))
+            return AngleInterval(mid + np.pi, dx2, self.names)
+        return AngleInterval(mid, dx, self.names)
+
+    def plot(self, ax=None, **kwargs):
+        if not ax:
+            ax = plt.gca()
+
+        x, y = self.linestring.xy
+        plt.plot(x, y, **kwargs)
+
+class Polygon(shapely.geometry.Polygon):
+
+    def __repr__(self):
+        points = [p for p in self.points]
+        return "Polygon(points={})".format(points)
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def points(self):
+        x, y = self.exterior.xy
+        return [Point(xi, yi) for xi, yi in zip(x, y)]
+
+    @staticmethod
+    def from_shapely(pol: shapely.geometry.Polygon):
+        x, y = pol.exterior.xy
+        points = ((xi, yi) for xi, yi in zip(x, y))
+        return Polygon(points)
+
+    def plot(self, ax=None, **kwargs):
+        if not ax:
+            ax = plt.gca()
+
+        x, y = self.exterior.xy
+        xy = np.array([x, y]).T
+        polygon = pltPolygon(xy, True, **kwargs)
+        p = PatchCollection([polygon], alpha=0.3, **kwargs)
+        ax.add_collection(p)

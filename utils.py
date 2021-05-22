@@ -47,20 +47,19 @@ def extrapolate_line(line, xlim, ylim):
         y = m * (x - line.p1.x) + line.p1.y
     return x, y
 
-
 def plot_planes(tree, line_stack=[], dir_stack=[], lines=[], xlim=(0,800), ylim=(0,800), annotate=False):
 
     if tree:
         line = tree.data[0]
         x, y = extrapolate_line(line, xlim, ylim)
-        c_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.Normal, line.Name)
+        c_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.normal, line.name)
         for p_l, dir in zip(reversed(line_stack), reversed(dir_stack)):
             ls = p_l.split(c_l)
             if ls:
                 l1, l2 = ls
 
                 # Unit Vector for normal
-                vp = [p_l.NormalV.x, p_l.NormalV.y]
+                vp = [p_l.normalV.x, p_l.normalV.y]
                 up = vp / np.linalg.norm(vp)
 
                 # Unit Vector for l1
@@ -86,14 +85,14 @@ def plot_planes(tree, line_stack=[], dir_stack=[], lines=[], xlim=(0,800), ylim=
 
                 x, y = ([l.p1.x, l.p2.x], [l.p1.y, l.p2.y])
 
-                c_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.Normal, line.Name)
-        # midPoint = c_l.getMidPoint()
-        # plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001,
+                c_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.normal, line.name)
+        # midPoint = c_l.mid_point
+        # plt.quiver(midPoint.x, midPoint.y, line.normalV.x, line.normalV.y, width=0.001,
         # headwidth=0.2)
-        plt.plot(x, y, 'm-', linewidth=0.2)
+        plt.plot(x, y, plt.plot(x, y, 'm-', linewidth=0.2))
         if annotate:
-            midPoint = c_l.getMidPoint()
-            plt.text(midPoint.x, midPoint.y, c_l.Name)
+            midPoint = c_l.mid_point
+            plt.text(midPoint.x, midPoint.y, c_l.name)
         # plt.pause(0.1)
         a=2
         line_stack.append(c_l)
@@ -236,7 +235,7 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
     if ax is None:
         ax = plt.gca()
 
-    a = line.Name
+    a = line.name
     interval = line.to_interval(ref_point)
 
     if not len(fov):
@@ -262,30 +261,69 @@ def process_line(line, fov, vis_lines, ref_point, ax=None):
                 visible = False
                 break
             elif interval.intersects(interval_i):
-                if interval_i.contains_angle(interval.min, not_equals=True):
-                    phi = interval_i.max
-                elif interval_i.contains_angle(interval.max, not_equals=True):
-                    phi = interval_i.min
-                else:
+                clip_min = interval_i.contains_angle(interval.min, not_equals=True)
+                clip_max = interval_i.contains_angle(interval.max, not_equals=True)
+                if not (clip_min or clip_max):
                     continue
-                # Split existing line, according to fov
-                x, y = pol2cart(1e15, phi)
-                x, y = (x + ref_point.x, y + ref_point.y)
-                li = LineSegment(ref_point, Point(x, y))
-                l1, l2 = li.split(line)
+                if clip_min:
+                    phi = interval_i.max
+                    x, y = pol2cart(1e15, phi)
+                    x, y = (x + ref_point.x, y + ref_point.y)
+                    li = LineSegment(ref_point, Point(x, y))
+                    l1, l2 = li.split(line)
 
-                _, a1 = l1.p1.to_polar(ref_point)
-                if interval_i.contains_angle(a1, True):
-                    line = l2
-                    # p1, p2 = l2.to_polar(ref_point)
-                else:
-                    line = l1
-                    # p1, p2 = l1.to_polar(ref_point)
+                    _, a1 = l1.p1.to_polar(ref_point)
+                    if interval_i.contains_angle(a1, True):
+                        line = l2
+                        # p1, p2 = l2.to_polar(ref_point)
+                    else:
+                        line = l1
+                        # p1, p2 = l1.to_polar(ref_point)
 
-                # Generate new line and interval
-                # phi0, dx1 = to_range2(p1[1], p2[1])
-                # interval = AngleInterval(phi0, dx1)
-                interval = line.to_interval(ref_point)
+                    # Generate new line and interval
+                    # phi0, dx1 = to_range2(p1[1], p2[1])
+                    # interval = AngleInterval(phi0, dx1)
+                    interval = line.to_interval(ref_point)
+                if clip_max:
+                    phi = interval_i.min
+                    # Split existing line, according to fov
+                    x, y = pol2cart(1e15, phi)
+                    x, y = (x + ref_point.x, y + ref_point.y)
+                    li = LineSegment(ref_point, Point(x, y))
+                    l1, l2 = li.split(line)
+
+                    _, a1 = l1.p1.to_polar(ref_point)
+                    if interval_i.contains_angle(a1, True):
+                        line = l2
+                        # p1, p2 = l2.to_polar(ref_point)
+                    else:
+                        line = l1
+                        # p1, p2 = l1.to_polar(ref_point)
+
+                    # Generate new line and interval
+                    # phi0, dx1 = to_range2(p1[1], p2[1])
+                    # interval = AngleInterval(phi0, dx1)
+                    interval = line.to_interval(ref_point)
+                # else:
+                #     continue
+                # # Split existing line, according to fov
+                # x, y = pol2cart(1e15, phi)
+                # x, y = (x + ref_point.x, y + ref_point.y)
+                # li = LineSegment(ref_point, Point(x, y))
+                # l1, l2 = li.split(line)
+                #
+                # _, a1 = l1.p1.to_polar(ref_point)
+                # if interval_i.contains_angle(a1, True):
+                #     line = l2
+                #     # p1, p2 = l2.to_polar(ref_point)
+                # else:
+                #     line = l1
+                #     # p1, p2 = l1.to_polar(ref_point)
+                #
+                # # Generate new line and interval
+                # # phi0, dx1 = to_range2(p1[1], p2[1])
+                # # interval = AngleInterval(phi0, dx1)
+                # interval = line.to_interval(ref_point)
 
         if visible:
             fov.append(interval)

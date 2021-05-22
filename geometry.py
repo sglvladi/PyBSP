@@ -54,7 +54,7 @@ class Point(shapely.geometry.Point):
             -1 - Point is in opposite direction of line normal (behind)
 
         """
-        dot = np.dot(line.NormalV.to_array(), self.to_array() - line.getMidPoint().to_array())
+        dot = np.dot(line.normalV.to_array(), self.to_array() - line.mid_point.to_array())
         if dot == 0:
             return dot
         return dot / abs(dot)
@@ -87,7 +87,7 @@ class Vector:
     def to_array(self):
         return np.array([self.x, self.y])
 
-    def dotProduct(self, vector):
+    def dot(self, vector):
         """returns vector dot product of this vector with vector as function argument"""
         return np.dot(self.to_array(), vector.to_array())
         # return self.x * vector.x + self.y * vector.y
@@ -95,24 +95,24 @@ class Vector:
 
 class LineSegment:
     """2D line segment class"""
-    def __init__(self, p1, p2, Normal=1, Name=''):
-        """Arguments: p1 (type: Point), p2 (type: Point), Normal (type: Int), Name (type: String),
-        arg 'Normal' represents one of two possible directions of normal vector of our line segment, arg 'Name
+    def __init__(self, p1, p2, normal=1, name=''):
+        """Arguments: p1 (type: Point), p2 (type: Point), normal (type: Int), name (type: String),
+        arg 'normal' represents one of two possible directions of normal vector of our line segment, arg 'name
         is any arbitrary name for the purpose of identifying nodes when printing binary trees"""
         self.p1 = p1
         self.p2 = p2
-        self.Name = Name
+        self.name = name
 
         Dx = p2.x - p1.x
         Dy = p2.y - p1.y
-        self.Normal = Normal
-        self.NormalV = Vector(Dy, -Dx)
-        if Normal == -1:
-            self.NormalV = Vector(-Dy, Dx)
+        self.normal = normal
+        self.normalV = Vector(Dy, -Dx)
+        if normal == -1:
+            self.normalV = Vector(-Dy, Dx)
 
     def __repr__(self):
-        return "LineSegment(Name={}, p1={}, p2={}, Normal={}, NormalV={})".format(self.Name, self.p1, self.p2,
-                                                                                  self.Normal, self.NormalV)
+        return "LineSegment(name={}, p1={}, p2={}, normal={}, normalV={})".format(self.name, self.p1, self.p2,
+                                                                                  self.normal, self.normalV)
 
     @property
     def points(self):
@@ -126,13 +126,15 @@ class LineSegment:
     def linestring(self):
         return LineString((self.p1.to_array(), self.p2.to_array()))
 
-    def getMidPoint(self):
+    @property
+    def mid_point(self):
         """returns middle point of our line segment"""
         return Point(
             ((self.p2.x + self.p1.x) / 2),
             ((self.p2.y + self.p1.y) / 2))
 
-    def getLength(self):
+    @property
+    def length(self):
         """returns length of our line segment """
         return self.p1.get_distance(self.p2)
 
@@ -140,7 +142,7 @@ class LineSegment:
         """prints point coordinates and direction of normal vector"""
         self.p1.Print()
         self.p2.Print()
-        print(self.Normal, '\n')
+        print(self.normal, '\n')
 
     def compare(self, OtherLine):
         """Compares two line segments for space partitioning, returns a character that identify the comparison of the two lines
@@ -148,14 +150,14 @@ class LineSegment:
         if our line segment (infinite) intersects the 'Otherline' and thus causes the 'Otherline' to split into two, it returns 'P'
         if both line segments are collinear, returns 'C'
         """
-        DotProduct1 = self.NormalV.dotProduct(
+        DotProduct1 = self.normalV.dot(
             Vector(
                 (OtherLine.p1.x - self.p1.x),
                 (OtherLine.p1.y - self.p1.y)))
         if abs(DotProduct1) < DoubleTolerance:
             DotProduct1 = 0
 
-        DotProduct2 = self.NormalV.dotProduct(
+        DotProduct2 = self.normalV.dot(
             Vector(
                 (OtherLine.p2.x - self.p1.x),
                 (OtherLine.p2.y - self.p1.y)))
@@ -199,18 +201,18 @@ class LineSegment:
         Solution taken from: http://paulbourke.net/geometry/pointlineplane/
         """
 
-        numer = np.dot(self.NormalV.to_array(),
+        numer = np.dot(self.normalV.to_array(),
                        self.p1.to_array() - other.p1.to_array())
-        denom = np.dot(self.NormalV.to_array(),
+        denom = np.dot(self.normalV.to_array(),
                        other.p2.to_array() - other.p1.to_array())
 
-        # numer = (self.NormalV.x * (other.p1.x - self.p1.x)) + \
-        #     (self.NormalV.y * (other.p1.y - self.p1.y))
-        # denom = ((-self.NormalV.x) * (other.p2.x - other.p1.x)) + \
-        #     ((-self.NormalV.y) * (other.p2.y - other.p1.y))
+        # numer = (self.normalV.x * (other.p1.x - self.p1.x)) + \
+        #     (self.normalV.y * (other.p1.y - self.p1.y))
+        # denom = ((-self.normalV.x) * (other.p2.x - other.p1.x)) + \
+        #     ((-self.normalV.y) * (other.p2.y - other.p1.y))
         #
-        # numer = self.NormalV.to_array() @ (other.p1.to_array()-self.p1.to_array())
-        # denom = -self.NormalV.to_array() @ (other.p2.to_array()-other.p1.to_array())
+        # numer = self.normalV.to_array() @ (other.p1.to_array()-self.p1.to_array())
+        # denom = -self.normalV.to_array() @ (other.p2.to_array()-other.p1.to_array())
 
         if denom != 0.0:
             t = numer / denom
@@ -221,8 +223,8 @@ class LineSegment:
             x = other.p1.x + t * (other.p2.x - other.p1.x)
             y = other.p1.y + t * (other.p2.y - other.p1.y)
             intersection = Point(x, y)
-            return LineSegment(other.p1, intersection, other.Normal, Name=(other.Name + '_a')), \
-                   LineSegment(intersection, other.p2, other.Normal, Name=(other.Name + '_b'))
+            return LineSegment(other.p1, intersection, other.normal, name=(other.name + '_a')), \
+                   LineSegment(intersection, other.p2, other.normal, name=(other.name + '_b'))
         else:
             return None
 
@@ -232,12 +234,12 @@ class LineSegment:
         if ax:
             ax.plot(x, y, **kwargs)
             if plot_norm:
-                midPoint = self.getMidPoint()
-                ax.quiver(midPoint.x, midPoint.y, self.NormalV.x, self.NormalV.y, width=0.001, headwidth=0.2)
+                midPoint = self.mid_point
+                ax.quiver(midPoint.x, midPoint.y, self.normalV.x, self.normalV.y, width=0.001, headwidth=0.2)
         else:
             if plot_norm:
-                midPoint = self.getMidPoint()
-                plt.quiver(midPoint.x, midPoint.y, self.NormalV.x, self.NormalV.y, width=0.001, headwidth=0.2)
+                midPoint = self.mid_point
+                plt.quiver(midPoint.x, midPoint.y, self.normalV.x, self.normalV.y, width=0.001, headwidth=0.2)
             plt.plot(x, y, **kwargs)
 
     def to_polar(self, ref=None):
@@ -261,7 +263,15 @@ class LineSegment:
     def to_interval(self, ref_point=None):
         p1, p2 = self.to_polar(ref_point)
         mid, dx = to_range2(p1[1], p2[1])
-        return AngleInterval(mid, dx, self.Name)
+        return AngleInterval(mid, dx, self.name)
+
+    @staticmethod
+    def from_linestring(linestring: LineString, normal=None, name=None):
+        x, y = linestring.xy
+        p1 = Point(x[0], y[0])
+        p2 = Point(x[1], y[1])
+        return LineSegment(p1, p2)
+
 
 
 class MergedLine:
@@ -274,7 +284,7 @@ class MergedLine:
 
     @property
     def names(self):
-        return [line.Name for line in self.lines]
+        return [line.name for line in self.lines]
 
     def to_interval(self, ref_point=None):
         points = []

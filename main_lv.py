@@ -3,9 +3,9 @@ import numpy as np
 from copy import copy
 from shapely.geometry import Polygon, MultiLineString, shape
 
-from bsp import BSP, BSP3
+from bsp import BSP
 from geometry import LineSegment, Point
-from utils import plot_planes, plot_visibility2, sort_fovs
+from utils import sort_fovs
 
 # a = np.random.randint(10000)
 # print(a)
@@ -24,19 +24,19 @@ def generate_polygons():
     p2 = Point(offset_x, offset_y + height)
     p3 = Point(offset_x + width, offset_y)
     p4 = Point(offset_x + width, offset_y + height)
-    lines.append(LineSegment(p1, p2, 1, '1'))
-    lines.append(LineSegment(p1, p3, -1, '2'))
-    lines.append(LineSegment(p3, p4, -1, '3'))
-    lines.append(LineSegment(p2, p4, 1, '4'))
+    lines.append(LineSegment(p1, p2, -1, '1'))
+    lines.append(LineSegment(p1, p3, 1, '2'))
+    lines.append(LineSegment(p3, p4, 1, '3'))
+    lines.append(LineSegment(p2, p4, -1, '4'))
     polygons.append(Polygon([p1.to_array(), p2.to_array(), p4.to_array(), p3.to_array()]))
 
     # Polygon 2
     p1 = Point(200., 600.)
     p2 = Point(450., 600.)
     p3 = Point(300., 700.)
-    lines.append(LineSegment(p1, p2, -1, '5'))
-    lines.append(LineSegment(p2, p3, -1, '6'))
-    lines.append(LineSegment(p3, p1, -1, '7'))
+    lines.append(LineSegment(p1, p2, 1, '5'))
+    lines.append(LineSegment(p2, p3, 1, '6'))
+    lines.append(LineSegment(p3, p1, 1, '7'))
     polygons.append(Polygon([p1.to_array(), p2.to_array(), p3.to_array()]))
 
     # Polygon 3
@@ -44,10 +44,10 @@ def generate_polygons():
     p2 = Point(600., 250.)
     p3 = Point(500., 350.)
     p4 = Point(400., 250.)
-    lines.append(LineSegment(p1, p2, -1, '8'))
-    lines.append(LineSegment(p2, p3, -1, '9'))
-    lines.append(LineSegment(p3, p4, -1, '10'))
-    lines.append(LineSegment(p4, p1, -1, '11'))
+    lines.append(LineSegment(p1, p2, 1, '8'))
+    lines.append(LineSegment(p2, p3, 1, '9'))
+    lines.append(LineSegment(p3, p4, 1, '10'))
+    lines.append(LineSegment(p4, p1, 1, '11'))
     polygons.append(Polygon([p1.to_array(), p2.to_array(), p3.to_array(), p4.to_array()]))
 
     # Polygon 4
@@ -55,10 +55,10 @@ def generate_polygons():
     p2 = Point(800., 0.)
     p3 = Point(800., 800.)
     p4 = Point(0., 800.)
-    lines.append(LineSegment(p1, p2, 1, '12'))
-    lines.append(LineSegment(p2, p3, 1, '13'))
-    lines.append(LineSegment(p3, p4, 1, '14'))
-    lines.append(LineSegment(p4, p1, 1, '15'))
+    lines.append(LineSegment(p1, p2, -1, '12'))
+    lines.append(LineSegment(p2, p3, -1, '13'))
+    lines.append(LineSegment(p3, p4, -1, '14'))
+    lines.append(LineSegment(p4, p1, -1, '15'))
     polygons.append(Polygon([p1.to_array(), p2.to_array(), p3.to_array(), p4.to_array()]))
 
     return lines, polygons
@@ -117,7 +117,7 @@ def generate_ref_point(polygons):
 def main():
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 800
-    SHOW_NORMALS = False
+    SHOW_NORMALS = True
     ANNOTATE_LINES = True
 
     print('Generating line segments')
@@ -136,40 +136,42 @@ def main():
     # multipolygons = boundary.difference(lines2)
 
     print('Generating tree')
-    bsptree = BSP3(lines, heuristic='even')
+    bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
     # bsptree.tree.data = copy(lines)
     # bsptree.generate_tree(bsptree.tree, heuristic='random')
 
-    plt.figure(figsize=(8, 6))
-    bsptree.draw_nx(plt.gca(), show_labels=False)
+    #plt.figure(figsize=(8, 6))
+    bsptree.draw_nx(plt.gca(), show_labels=True)
 
     plt.figure(figsize=(8, 6))
-    plot_planes(bsptree.tree)
+    # plot_planes(bsptree.tree, xlim=(-100, 900), ylim=(-100, 900))
+    bsptree.plot_planes()
     for line in lines:
         x = [line.p1.x, line.p2.x]
         y = [line.p1.y, line.p2.y]
         plt.plot(x, y, 'k-')
         if SHOW_NORMALS:
-            midPoint = line.getMidPoint()
-            plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
+            midPoint = line.mid_point
+            plt.quiver(midPoint.x, midPoint.y, line.normalV.x, line.normalV.y, width=0.001, headwidth=0.2)
         if ANNOTATE_LINES:
-            midPoint = line.getMidPoint()
-            plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
+            midPoint = line.mid_point
+            plt.text(midPoint.x + line.normalV.x / 10, midPoint.y + line.normalV.y / 10, line.name)
 
-    plot_planes(bsptree.tree)
-    plot_waypoints(point1, bsptree)
+    # plot_planes(bsptree.tree)
+    # bsptree.draw_nx(plt.gca(), show_labels=False)
+    # plot_waypoints(point1, bsptree)
     plt.axis('equal')
-    plt.xlim((0, SCREEN_WIDTH))
-    plt.ylim((0, SCREEN_HEIGHT))
+    plt.xlim((-100, 900))
+    plt.ylim((-100, 900))
 
     # p = Point()
-    #print(bsptree.find_leaf(Point(40, 400)).data[0].Name)
+    #print(bsptree.find_leaf(Point(40, 400)).data[0].name)
     print(bsptree.depth())
     plt.pause(0.01)
 
-    plt.plot(point1.x, point1.y, 'ko')
+    # plt.plot(point1.x, point1.y, 'ko')
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    rendered_lines = bsptree.render2(point1)
+    rendered_lines = bsptree.render(point1)
     # rendered_lines = bsptree.render2(point1)333333333333333333333333333313
     # merged_lines = merge_lines2(rendered_lines)
 
@@ -188,7 +190,6 @@ def main():
 
     # p = a.area()
 
-
     fig = plt.figure()
     ax = plt.gca()
     fovs = []
@@ -200,7 +201,6 @@ def main():
         color = np.random.rand(1, 3)
         fov.plot(ax=ax, fc=color)
         plt.pause(0.01)
-        a = 2
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
     # for line in rendered_lines:
     #     line.plot(color='r', marker='s')

@@ -2,16 +2,16 @@ import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 from copy import copy
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import LineString
 from shapely.ops import linemerge
 import cProfile as profile
 # In outer section of code
 pr = profile.Profile()
 pr.disable()
 
-from bsp import BSP, BSP2, BSP3
-from geometry import LineSegment, Point
-from utils import plot_planes, plot_visibility2, sort_fovs
+from bsp import BSP
+from geometry import LineSegment, Point, Polygon
+from utils import sort_fovs
 
 
 def merc_from_arrays(lats, lons):
@@ -128,7 +128,7 @@ def main():
                 p11 = (p1.x, p1.y)
                 p22 = (p2.x, p2.y)
                 if p11 != p22:
-                    lines.append(LineSegment(p1, p2, 1, str(len(lines))))
+                    lines.append(LineSegment(p1, p2, -1, str(len(lines))))
 
     # bsptree = BSP3()
     # bsptree.tree.data = copy(lines)
@@ -141,19 +141,20 @@ def main():
         x = (line.p1.x, line.p2.x)
         y = (line.p1.y, line.p2.y)
         plt.plot(x, y, 'k-')
-        # midPoint = line.getMidPoint()
+        # midPoint = line.mid_point
         # plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
 
-        # midPoint = line.getMidPoint()
+        # midPoint = line.mid_point
         # plt.quiver(midPoint.x, midPoint.y, line.NormalV.x, line.NormalV.y, width=0.001, headwidth=0.2)
     xlim = plt.xlim()
     ylim = plt.ylim()
 
     print('Creating tree')
-    bsptree = BSP3(lines, heuristic='even', bounds=(xlim, ylim))
+    bsptree = BSP(lines, heuristic='even', bounds=(xlim, ylim))
     if SHOW_PLANES:
         ls = []
-        plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
+        bsptree.plot_planes()
+        # plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
         plt.xlim(xlim)
         plt.ylim(ylim)
 
@@ -163,17 +164,57 @@ def main():
     print("Rendering...", end='')
     pr.enable()
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    rendered_lines = bsptree.render2(point1)
+    rendered_lines = bsptree.render(point1)
     pr.disable()
     print("done")
 
+    colors = dict()
     for line in rendered_lines:
-        line.plot(color='r')
+        color = np.random.rand(1, 3)
+        colors[tuple(line.names)] = color
+        line.plot(color=color)
         for point in line.linestring.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.01)
+    # edge_points = [Point(1597488.6717045617, 4301871.333391014),
+    #                Point(1599417.9943272963, 4300372.638162802),
+    #                Point(1582837.4682432958, 4303495.014776728),
+    #                Point(1595103.9410449916, 4286341.24740092)]
+    # v_points = [Point(1594367.0060159403, 4303016.2347787805),
+    #             Point(1597818.0326819716, 4299503.813637052),
+    #             Point(1595001.6940926984, 4287743.039718742),
+    #             Point(1592100.9530655053, 4304043.338596948),
+    #             Point(1587575.604257726, 4302195.461219004),
+    #             Point(1593973.591803528, 4296706.851525738),
+    #             Point(1594876.4151377596, 4298836.853015211),
+    #             Point(1595006.5698863952, 4299209.634897823),
+    #             Point(1595040.923081254, 4292446.547744543),
+    #             Point(1595488.4608300899, 4289249.752548993)]
+    # for line in rendered_lines:
+    #     color = np.random.rand(1, 3)
+    #     colors[tuple(line.names)] = color
+    #     line.plot(color=color)
+    #     x, y = line.linestring.xy
+    #     x.append(point1.x)
+    #     y.append(point1.y)
+    #     ps = [(xi, yi) for xi, yi in zip(x, y)]
+    #     polygon = Polygon(ps)
+    #     polygon.plot(color=color)
+    #     # x, y = polygon.exterior.xy
+    #
+    #     # line.plot(color=color)
+    #     # for point in line.linestring.boundary:
+    #     #     x = [point.x, point1.x]
+    #     #     y = [point.y, point1.y]
+    #     #     plt.plot(x, y, 'k--', linewidth=0.2)
+    #     plt.pause(0.01)
+    #     a=2
+    # for point in edge_points:
+    #     plt.plot(point.x, point.y, 'ro')
+    # for point in v_points:
+    #     plt.plot(point.x, point.y, 'bo')
 
     print("Finding leaf...", end='')
     a = bsptree.find_leaf(point1)
@@ -193,7 +234,7 @@ def main():
 
     fovs = sort_fovs(fovs)
     for fov in fovs:
-        color = np.random.rand(1, 3)
+        color = colors[tuple(fov.name)]
         fov.plot(ax=ax, fc=color)
         # plt.pause(0.01)
         a = 2

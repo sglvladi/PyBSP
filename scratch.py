@@ -178,6 +178,29 @@ def main():
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.01)
+
+    bsptree.gen_portals2()
+
+    connected_nodes = dict()
+    for node1 in bsptree.empty_leaves:
+        for node2 in bsptree.empty_leaves:
+            if node1 == node2 or (node1, node2) in connected_nodes or (node2, node1) in connected_nodes:
+                continue
+            for portal in node1.portals:
+                if portal in node2.portals:
+                    if (node1, node2) in connected_nodes:
+                        connected_nodes[(node1, node2)].push(portal)
+                    else:
+                        connected_nodes[(node1, node2)] = [portal]
+
+    for key, item in connected_nodes.items():
+        key[0].polygon.plot()
+        plt.pause(0.01)
+        key[1].polygon.plot()
+        plt.pause(0.01)
+        item[0].plot()
+        plt.pause(0.01)
+        a = 2
     # edge_points = [Point(1597488.6717045617, 4301871.333391014),
     #                Point(1599417.9943272963, 4300372.638162802),
     #                Point(1582837.4682432958, 4303495.014776728),

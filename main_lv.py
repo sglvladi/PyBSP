@@ -190,6 +190,28 @@ def main():
 
     # p = a.area()
 
+    bsptree.gen_portals2()
+
+    connected_nodes = dict()
+    for node1 in bsptree.empty_leaves:
+        for node2 in bsptree.empty_leaves:
+            if node1 == node2 or (node1, node2) in connected_nodes or (node2, node1) in connected_nodes:
+                continue
+            for portal in node1.portals:
+                if portal in node2.portals:
+                    if (node1, node2) in connected_nodes:
+                        connected_nodes[(node1, node2)].push(portal)
+                    else:
+                        connected_nodes[(node1, node2)] = [portal]
+
+    for key, item in connected_nodes.items():
+        key[0].polygon.plot()
+        plt.pause(0.01)
+        key[1].polygon.plot()
+        plt.pause(0.01)
+        item[0].plot()
+        plt.pause(0.01)
+        a=2
     fig = plt.figure()
     ax = plt.gca()
     fovs = []

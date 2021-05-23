@@ -3,18 +3,18 @@ from copy import copy
 
 from shapely.ops import linemerge, unary_union, polygonize
 
+from angles import angle_between
 from geometry import LineSegment, Point, Polygon
-from utils import extrapolate_line, test_between, to_range2, merge_lines, process_line, merge_fovs2
-import random
+from utils import extrapolate_line, merge_lines, process_line, merge_fovs2
 import numpy as np
 import networkx as nx
 from networkx.drawing.nx_pydot import graphviz_layout
 import matplotlib.pyplot as plt
-from stonesoup.functions import pol2cart
 
-class BinaryTree:
-    """Binary tree class"""
-    def __init__(self, data=[], parent=None, bounds=((0, 800), (0, 800)), polygon=None, plane=None):
+
+class BSPNode:
+    """BSP Node class"""
+    def __init__(self, data=[], parent=None, bounds=((0, 800), (0, 800)), polygon=None, plane=None, id=None):
         """Constructor, declares variables for left and right sub-tree and data for the current node"""
         self.left = None
         self.right = None
@@ -22,167 +22,103 @@ class BinaryTree:
         self.parent = parent
         self.polygon = polygon
         self.plane = plane
-        self.bounds=bounds
+        self.bounds = bounds
+        self.portals = []
+        self.id = id
 
     def __repr__(self):
-        return "BinaryTree(data={}, left={}, right={})".format(self.data, self.left, self.right)
+        return "BSPNode(id={}, data={}, left={}, right={})".format(self.id, self.data, self.left, self.right)
 
     def __bool__(self):
         return self.data is not None
 
-    def print(self):
-        """Prints the all tree nodes 'name' attribute in a binary tree format (needs to be improved)"""
-        queue = [self]
-        print_str = ''
+    def __eq__(self, other):
+        return self.id == other.id
 
-        while len(queue) > 0:
-            tree = queue.pop(0)
+    def __hash__(self):
+        return self.id
 
-            str_list = []
-            for line in tree.data:
-                str_list.append(line.name)
-            print_str += str(str_list)
-            if tree.left is not None:
-                str_list = []
-                for line in tree.left.data:
-                    str_list.append(line.name)
-                print_str += (' Left: ' + str(str_list))
-                queue.append(tree.left)
-            else:
-                print_str += (' Left: ' + ' / ')
+    @property
+    def is_leaf(self):
+        return self.left is None and self.right is None
 
-            if tree.right is not None:
-                str_list = []
-                for line in tree.right.data:
-                    str_list.append(line.name)
-                print_str += (' Right: ' + str(str_list))
-                queue.append(tree.right)
-            else:
-                print_str += (' Right: ' + ' / ')
-
-            print_str += '\n'
-        return print_str
-
-    def is_leaf(self, full=True):
-        if full:
-            return self.left is None and self.right is None
-        return self.left is None or self.right is None
-
+    @property
     def is_root(self):
         return self.parent is None
 
+    @property
     def is_solid(self):
-        if self.is_leaf() and self == self.parent.right:
+        if self.is_leaf and self == self.parent.right:
             return True
         return False
 
+    @property
     def is_empty(self):
-        if self.is_leaf() and self == self.parent.left:
+        if self.is_leaf and self == self.parent.left:
             return True
         return False
-
-    def get_area(self):
-        xlim = self.bounds[0]
-        ylim = self.bounds[1]
-        tree = self
-        lines_ = []
-        plt.figure()
-        while tree is not None:
-            line = tree.data[0]
-            x, y = extrapolate_line(line, xlim, ylim)
-            p_l = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), line.normal, line.name)
-            # p_l.plot(color='r')
-            for i, c_l in enumerate(lines_):
-                ls = p_l.split(c_l)
-                if ls:
-                    l1, l2 = ls
-
-                    # Unit Vector for normal
-                    vp = [p_l.normalV.x, p_l.normalV.y]
-                    up = vp / np.linalg.norm(vp)
-
-                    # Unit Vector for l1
-                    v1 = [l1.p1.x - l1.p2.x, l1.p1.y - l1.p2.y]
-                    u1 = v1 / np.linalg.norm(v1)
-                    t1 = np.arccos(np.dot(u1, up))
-
-                    # Unit Vector for l2
-                    v2 = [l2.p2.x - l2.p1.x, l2.p2.y - l2.p1.y]
-                    u2 = v2 / np.linalg.norm(v2)
-                    t2 = np.arccos(np.dot(u2, up))
-
-                    if c_l.name in self._child_names(tree.left):
-                        if t1 < np.pi / 2:
-                            l = l1
-                        else:
-                            l = l2
-                    elif c_l.name in self._child_names(tree.right):
-                        if t1 > np.pi / 2:
-                            l = l1
-                        else:
-                            l = l2
-                    x, y = ([l.p1.x, l.p2.x], [l.p1.y, l.p2.y])
-                    lines_[i] = LineSegment(Point(x[0], y[0]), Point(x[-1], y[-1]), c_l.normal, c_l.name)
-                    # lines_[i].plot(color='b')
-            lines_.append(p_l)
-            # plt.clf()
-            tree = tree.parent
-
-        for line in lines_:
-            line.plot()
-        plt.pause(0.1)
-        buffer = 0.0000000000001
-        lines = MultiLineString([line.linestring.xy for line in lines_]).buffer(buffer)
-        boundary = Polygon(((xlim[0], ylim[0]), (xlim[0], ylim[1]),
-                            (xlim[1], ylim[1]), (xlim[1], ylim[0])))  # lines.convex_hull
-        multipolygons = boundary.difference(lines)
-        polygons = list(multipolygons)
-        for p in polygons:
-            x,y = p.exterior.xy
-            plt.plot(x,y)
-        plt.pause(0.01)
-        # l1 = lines_[0].linestring.buffer(0.0000000000001)
-        # l2 = lines_[1].linestring.buffer(0.0000000000001)
-        ps = [p for p in polygons if np.all([l.linestring.buffer(0.0000000000001).intersects(p) for l in lines_])]
-        polygon = ps[-1]
-        x, y = polygon.exterior.xy
-        plt.plot(x, y, 'k-')
-        plt.pause(0.01)
-
-        return polygon
-
-    def _child_names(self, tree, names=[]):
-        if tree:
-            names = names + [l.name for l in tree.data] + self._child_names(tree.left) + self._child_names(tree.right)
-        return names
 
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
     def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800))):
         """Constructor, initializes binary tree"""
-        self.tree = BinaryTree()
+        self.tree = BSPNode()
         self.heuristic = heuristic
         self.bounds = bounds
+        self._portals = []
+        self._last_node_id = 0
         if lines:
             self.generate_tree(lines)
 
     @property
-    def nodes(self):
+    def nodes(self) -> [BSPNode]:
+        """
+        Return the nodes in the BSP tree, ordered by a depth-first search around the back of each node.
+
+        Returns
+        -------
+        list of BSPNode objects
+
+        """
         nodes = self._nodes(self.tree)
         return nodes
 
     def _nodes(self, tree):
         nodes = [tree]
-        if tree.left is not None:
-            nodes += self._nodes(tree.left)
         if tree.right is not None:
             nodes += self._nodes(tree.right)
+        if tree.left is not None:
+            nodes += self._nodes(tree.left)
         return nodes
 
-    def heuristic_min_partition(self, lines):
+    @property
+    def solid_leaves(self) -> [BSPNode]:
         """
-        Returns the index of the line segment in which causes the least amount of partitions with
+        Return all leaf nodes that represent a solid area (behind a wall)
+
+        Returns
+        -------
+        list of BSPNode objects
+
+        """
+        return [n for n in self.nodes if n.is_solid]
+
+    @property
+    def empty_leaves(self) -> [BSPNode]:
+        """
+        Return all leaf nodes that represent an empty area (in front of walls)
+
+        Returns
+        -------
+        list of BSPNode objects
+
+        """
+        return [n for n in self.nodes if n.is_empty]
+
+    def heuristic_min_partition(self, lines) -> int:
+        """
+        Returns the index of the line segment which causes the least amount of partitions with
         other line segments in the list.
         """
         min_idx = 0
@@ -242,7 +178,8 @@ class BSP:
             self.heuristic = heuristic
         polygon = Polygon(((self.bounds[0][0], self.bounds[1][0]), (self.bounds[0][0], self.bounds[1][1]),
                            (self.bounds[0][1], self.bounds[1][1]), (self.bounds[0][1], self.bounds[1][0])))
-        self.tree = BinaryTree(copy(lines), polygon=polygon)
+        self.tree = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
+        self._last_node_id += 1
         self._generate_tree(self.tree, self.heuristic)
         # self._generate_areas(self.tree)
         a = 2
@@ -250,7 +187,7 @@ class BSP:
     def _generate_tree(self, tree, heuristic='even'):
         """
         Generates the binary space partition tree recursively using the specified heuristic at each sub-tree
-        :param tree: BinaryTree, value should be self.tree on the first call, this argument exists so we can traverse the tree recursively
+        :param tree: BSPNode, value should be self.tree on the first call, this argument exists so we can traverse the tree recursively
         :param UseHeuristic: string, either 'even' for balanced tree or 'min' for least number of nodes
         :return: nothing
         """
@@ -286,11 +223,16 @@ class BSP:
         data.append(line)
 
         if pol_left and pol_right:
-            tree.plane = LineSegment.from_linestring(pol_left.intersection(pol_right))
+            tree.plane = LineSegment.from_linestring(pol_left.intersection(pol_right), line.normal, line.name)
         elif pol_left:
-            tree.plane = LineSegment.from_linestring(pol_left.intersection(l))
+            tree.plane = LineSegment.from_linestring(pol_left.intersection(l), line.normal, line.name)
         else:
-            tree.plane = LineSegment.from_linestring(pol_right.intersection(l))
+            tree.plane = LineSegment.from_linestring(pol_right.intersection(l), line.normal, line.name)
+
+        a = angle_between(tree.plane.normalV.to_array(), line.normalV.to_array())
+        if abs(a) > np.pi/100:
+            tree.plane = LineSegment(tree.plane.p1, tree.plane.p2, -tree.plane.normal, tree.plane.name)
+
 
         for i, line2 in enumerate(tree.data):
             # print('{}/{}'.format(i, len(tree.data)))
@@ -318,13 +260,15 @@ class BSP:
         tree.data = data
         if not len(data_left):
             data_left = None
-        tree.left = BinaryTree(data_left, parent=tree, polygon=pol_left)
+        tree.left = BSPNode(data_left, parent=tree, polygon=pol_left, id=self._last_node_id)
+        self._last_node_id += 1
         if data_left:
             self._generate_tree(tree.left, heuristic)
 
         if not len(data_right):
             data_right = None
-        tree.right = BinaryTree(data_right, parent=tree, polygon=pol_right)
+        tree.right = BSPNode(data_right, parent=tree, polygon=pol_right, id=self._last_node_id)
+        self._last_node_id += 1
         if data_right:
             self._generate_tree(tree.right, heuristic)
 
@@ -354,9 +298,9 @@ class BSP:
         child = g.number_of_nodes() + 1
         data = tree.data
         polygon = tree.polygon
-        leaf = tree.is_leaf()
-        solid = tree.is_solid()
-        empty = tree.is_empty()
+        leaf = tree.is_leaf
+        solid = tree.is_solid
+        empty = tree.is_empty
         if polygon is not None:
             g.add_node(child, data=data, leaf=leaf, polygon=polygon, solid=solid, empty=empty)
             if parent:
@@ -432,7 +376,7 @@ class BSP:
         parent = leaf.parent
 
         p_lines = []
-        if not leaf.is_root():
+        if not leaf.is_root:
             p_lines = self._render_parent(parent, leaf, ref_point)
 
         l = r_lines + p_lines
@@ -467,7 +411,7 @@ class BSP:
                     r_lines = r_lines + self._render_child(parent.left, p)
 
         p_lines = []
-        if not parent.is_root():
+        if not parent.is_root:
             p_lines = self._render_parent(parent.parent, parent, p)
 
         r_lines = r_lines + p_lines
@@ -476,7 +420,7 @@ class BSP:
     def _render_child(self, child, p):
         a = child.data[0].name
         r_lines = child.data
-        if child.is_leaf():
+        if child.is_leaf:
             return r_lines
         else:
             r_lines_left = []
@@ -494,9 +438,58 @@ class BSP:
                 r_lines = r_lines_right + r_lines + r_lines_left
         return r_lines
 
-    def construct_portals(self):
-        pass
+    def gen_portals2(self):
+        self._portals = []
+        self._removed_portals = set()
+        self._replacement_portals = dict()
+        for node in self.nodes:
+            # update node portals in case replacement or removal has occurred
+            node.portals = self._update_portals(node.portals)
+            #
+            if node.is_solid:
+                self._removed_portals |= {p.name for p in node.portals}
+                self._portals = [p for p in self._portals if p.name not in self._removed_portals]
+                node.portals = []
+                continue
+            elif node.is_empty:
+                continue
+            portal = node.plane
+            node.portals.append(portal)
+            self._portals.append(portal)
+            # Push down
+            for p in node.portals:
+                res = node.plane.compare(p)
+                if res == 'F':
+                    node.left.portals.append(p)
+                elif res == 'B':
+                    node.right.portals.append(p)
+                elif res == 'P':
+                    lines = node.plane.split(p)
+                    if node.plane.compare(lines[0]) == 'F':
+                        node.left.portals.append(lines[0])
+                        node.right.portals.append(lines[1])
+                    else:
+                        node.right.portals.append(lines[0])
+                        node.left.portals.append(lines[1])
+                    self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
+                    self._portals.remove(p)
+                    self._portals += lines
+                elif res == 'C':
+                    node.left.portals.append(p)
+                    node.right.portals.append(p)
 
+        for node in self.empty_leaves:
+            node.portals = self._update_portals(node.portals)
+
+    def _update_portals(self, portals):
+        portal_names = [p.name for p in portals]
+        processed_portals = set()
+        while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
+            for portal_name in portal_names:
+                if portal_name in self._replacement_portals.keys()-processed_portals:
+                    portal_names += set(self._replacement_portals[portal_name])
+                    processed_portals.add(portal_name)
+        return [p for p in self._portals if p.name in set(portal_names)-processed_portals]
 
 def cut_polygon_by_line(polygon, line):
     merged = linemerge([polygon.boundary, line])

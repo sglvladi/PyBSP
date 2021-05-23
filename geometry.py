@@ -270,8 +270,7 @@ class LineSegment:
         x, y = linestring.xy
         p1 = Point(x[0], y[0])
         p2 = Point(x[1], y[1])
-        return LineSegment(p1, p2)
-
+        return LineSegment(p1, p2, normal, name)
 
 
 class MergedLine:
@@ -307,6 +306,7 @@ class MergedLine:
 
         x, y = self.linestring.xy
         plt.plot(x, y, **kwargs)
+
 
 class Polygon(shapely.geometry.Polygon):
 

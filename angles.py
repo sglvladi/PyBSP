@@ -6,6 +6,14 @@ from matplotlib.patches import Wedge
 from matplotlib.collections import PatchCollection
 from stonesoup.types.angle import Bearing
 
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+def angle_between(v1, v2):
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 def mid_angle(a1, a2):
     vec1 = (np.sin(a1), np.cos(a1))

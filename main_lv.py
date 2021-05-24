@@ -7,6 +7,11 @@ from bsp import BSP
 from geometry import LineSegment, Point
 from utils import sort_fovs
 
+import cProfile as profile
+# In outer section of code
+pr = profile.Profile()
+pr.disable()
+
 # a = np.random.randint(10000)
 # print(a)
 np.random.seed(6951)
@@ -166,7 +171,7 @@ def main():
 
     # p = Point()
     #print(bsptree.find_leaf(Point(40, 400)).data[0].name)
-    print(bsptree.depth())
+    print(bsptree.depth)
     plt.pause(0.01)
 
     # plt.plot(point1.x, point1.y, 'ko')
@@ -182,15 +187,34 @@ def main():
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
-    plt.pause(0.01)
+    plt.pause(0.1)
 
-    a = bsptree.find_leaf(point1)
-    a.polygon.plot(color='r')
-    plt.pause(0.01)
+    # a = bsptree.find_leaf(point1)
+    # a.polygon.plot(color='r')
+    # plt.pause(0.01)
 
     # p = a.area()
 
-    bsptree.gen_portals2()
+    for leaf in bsptree.empty_leaves:
+        pol = leaf.polygon
+        x, y = pol.centroid.x, pol.centroid.y
+        plt.text(x,y, leaf.id, color='r')
+    plt.pause(0.1)
+
+    # for portal, nodes in bsptree.portal_connections.items():
+    #     p = portal.plot(color='b')
+    #     n1 = nodes[0].polygon.plot(color='y')
+    #     n2 = nodes[1].polygon.plot(color='y')
+    #     plt.pause(0.01)
+    #     p.remove()
+    #     n1.remove()
+    #     n2.remove()
+    bsptree.gen_portals()
+    pr.enable()
+    bsptree.gen_pvs()
+    pr.disable()
+    print("[INFO]: Dumping Profiler stats")
+    pr.dump_stats('profile_{}.pstat'.format(1))
 
     connected_nodes = dict()
     for node1 in bsptree.empty_leaves:

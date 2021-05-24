@@ -14,6 +14,18 @@ from geometry import LineSegment, Point, Polygon
 from utils import sort_fovs
 
 
+def plot_nodes(nodes, **kwargs):
+    artists = []
+    for node in nodes:
+        artists.append(node.polygon.plot(**kwargs))
+    return artists
+
+
+def remove_artists(artists):
+    for artist in artists:
+        artist.remove()
+
+
 def merc_from_arrays(lats, lons):
     r_major = 6378137.000
     x = r_major * np.radians(lons)
@@ -136,11 +148,12 @@ def main():
     point1 = generate_ref_point(polygons)
 
     # Plot scene
-    plt.figure(figsize=(8, 6))
+    fig1 = plt.figure(figsize=(8, 6))
+    ax1 = fig1.add_subplot(111)
     for line in lines:
         x = (line.p1.x, line.p2.x)
         y = (line.p1.y, line.p2.y)
-        plt.plot(x, y, 'k-')
+        ax1.plot(x, y, 'k-')
         # midPoint = line.mid_point
         # plt.text(midPoint.x + line.NormalV.x / 10, midPoint.y + line.NormalV.y / 10, line.Name)
 
@@ -150,36 +163,52 @@ def main():
     ylim = plt.ylim()
 
     print('Creating tree')
-    bsptree = BSP(lines, heuristic='even', bounds=(xlim, ylim))
+    bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+
+    # Plot tree graph
+    fig2 = plt.figure(figsize=(8, 6))
+    ax2 = fig2.add_subplot(111)
+    bsptree.draw_nx(ax=ax2, show_labels=True)
+    plt.pause(0.01)
+
+
     if SHOW_PLANES:
         ls = []
-        bsptree.plot_planes()
+        bsptree.plot_planes(ax=ax1)
         # plot_planes(bsptree.tree, lines=ls, xlim=xlim, ylim=ylim)
-        plt.xlim(xlim)
-        plt.ylim(ylim)
+        ax1.set_xlim(xlim)
+        ax1.set_ylim(ylim)
 
-    plt.plot(point1.x, point1.y, 'ko')
+    ax1.plot(point1.x, point1.y, 'ko')
     plt.pause(0.01)
 
     print("Rendering...", end='')
-    pr.enable()
+    # pr.enable()
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
     rendered_lines = bsptree.render(point1)
-    pr.disable()
+    # pr.disable()
     print("done")
 
     colors = dict()
     for line in rendered_lines:
         color = np.random.rand(1, 3)
         colors[tuple(line.names)] = color
-        line.plot(color=color)
+        line.plot(ax=ax1, color=color)
         for point in line.linestring.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
-            plt.plot(x, y, 'k--', linewidth=0.2)
-    plt.pause(0.01)
+            ax1.plot(x, y, 'k--', linewidth=0.2)
+    plt.pause(0.1)
 
-    bsptree.gen_portals2()
+    for leaf in bsptree.empty_leaves:
+        pol = leaf.polygon
+        x, y = pol.centroid.x, pol.centroid.y
+        ax1.text(x,y, leaf.id, color='r')
+    plt.pause(0.1)
+
+    print('Generating portals...', end='')
+    bsptree.gen_portals()
+    print('Done')
 
     connected_nodes = dict()
     for node1 in bsptree.empty_leaves:
@@ -192,6 +221,27 @@ def main():
                         connected_nodes[(node1, node2)].push(portal)
                     else:
                         connected_nodes[(node1, node2)] = [portal]
+
+    print('Generating PVS...', end='')
+    pr.enable()
+    bsptree.gen_pvs()
+    pr.disable()
+    print('Done')
+    print("[INFO]: Dumping Profiler stats")
+    pr.dump_stats('profile_{}.pstat'.format(1))
+
+
+    # connected_nodes = dict()
+    # for node1 in bsptree.empty_leaves:
+    #     for node2 in bsptree.empty_leaves:
+    #         if node1 == node2 or (node1, node2) in connected_nodes or (node2, node1) in connected_nodes:
+    #             continue
+    #         for portal in node1.portals:
+    #             if portal in node2.portals:
+    #                 if (node1, node2) in connected_nodes:
+    #                     connected_nodes[(node1, node2)].push(portal)
+    #                 else:
+    #                     connected_nodes[(node1, node2)] = [portal]
 
     for key, item in connected_nodes.items():
         key[0].polygon.plot()
@@ -244,10 +294,6 @@ def main():
     print("Done")
     a.polygon.plot(color='r')
     plt.pause(0.01)
-
-    # Plot tree graph
-    plt.figure(figsize=(8, 6))
-    bsptree.draw_nx(plt.gca(), show_labels=False)
 
     fig = plt.figure()
     ax = plt.gca()

@@ -19,6 +19,21 @@ DoubleTolerance = 1e-5
 class Point(shapely.geometry.Point):
     """2D cartesian coordinate representation of point"""
 
+    def __init__(self, *args):
+        self._x = 0
+        self._y = 0
+        super().__init__(*args)
+        self._x = self.coords[0][0]
+        self._y = self.coords[0][1]
+
+    @property
+    def x(self):
+        return self._x
+
+    @property
+    def y(self):
+        return self._y
+
     def __eq__(self, other):
         return np.array_equal(self.to_array(), other.to_array())
 
@@ -113,6 +128,12 @@ class LineSegment:
     def __repr__(self):
         return "LineSegment(name={}, p1={}, p2={}, normal={}, normalV={})".format(self.name, self.p1, self.p2,
                                                                                   self.normal, self.normalV)
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __hash__(self):
+        return hash(self.name)
 
     @property
     def points(self):
@@ -232,15 +253,16 @@ class LineSegment:
         x = [self.p1.x, self.p2.x]
         y = [self.p1.y, self.p2.y]
         if ax:
-            ax.plot(x, y, **kwargs)
             if plot_norm:
                 midPoint = self.mid_point
                 ax.quiver(midPoint.x, midPoint.y, self.normalV.x, self.normalV.y, width=0.001, headwidth=0.2)
+            return ax.plot(x, y, **kwargs)[0]
         else:
             if plot_norm:
                 midPoint = self.mid_point
                 plt.quiver(midPoint.x, midPoint.y, self.normalV.x, self.normalV.y, width=0.001, headwidth=0.2)
-            plt.plot(x, y, **kwargs)
+            return plt.plot(x, y, **kwargs)[0]
+
 
     def to_polar(self, ref=None):
         if not ref:
@@ -305,7 +327,7 @@ class MergedLine:
             ax = plt.gca()
 
         x, y = self.linestring.xy
-        plt.plot(x, y, **kwargs)
+        return ax.plot(x, y, **kwargs)
 
 
 class Polygon(shapely.geometry.Polygon):
@@ -337,3 +359,4 @@ class Polygon(shapely.geometry.Polygon):
         polygon = pltPolygon(xy, True, **kwargs)
         p = PatchCollection([polygon], alpha=0.3, **kwargs)
         ax.add_collection(p)
+        return p

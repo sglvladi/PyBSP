@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Wedge
 from matplotlib.collections import PatchCollection
 from stonesoup.types.angle import Bearing
+from shapely.geometry import Point
 
 def unit_vector(vector):
     """ Returns the unit vector of the vector.  """
@@ -150,10 +151,12 @@ class AngleInterval:
             name = list(set(self.name).union(set(other.name)))
             return AngleInterval(mid, dx, name)
 
-    def plot(self, ax=None, **kwargs):
+    def plot(self, ref_point=None, radius=1, ax=None, **kwargs):
         if not ax:
             ax = plt.gca()
 
+        if not ref_point:
+            ref_point = Point(0, 0)
         min = np.rad2deg(np.fmod(float(self.mid-self.delta)+2*np.pi, 2*np.pi))
         max = np.rad2deg(np.fmod(float(self.mid+self.delta)+2*np.pi, 2*np.pi))
 
@@ -161,10 +164,11 @@ class AngleInterval:
         if self.delta == np.pi:
             max = max-1e-10
 
-        w = Wedge((0, 0), 1, min, max, **kwargs)
+        w = Wedge((ref_point.x, ref_point.y), radius, min, max, **kwargs)
         p = PatchCollection([w], alpha=0.3, **kwargs)
         ax.add_collection(p)
         ax.autoscale_view()
+        return p
 
 
 

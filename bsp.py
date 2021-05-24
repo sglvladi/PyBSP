@@ -72,6 +72,7 @@ class BSP:
         self._last_node_id = 0
         self.node_connectivity = None
         self.portal_connections = None
+        self.node_pvs = dict()
         if lines:
             self.generate_tree(lines)
 
@@ -250,7 +251,12 @@ class BSP:
         self.root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
         self._last_node_id += 1
         self._generate_tree(self.root, self.heuristic)
-        #self.gen_portals()
+        print('Generating portals...', end='')
+        self.gen_portals()
+        print('Done')
+        print('Generating PVS...', end='')
+        self.gen_pvs()
+        print('Done')
 
     def _generate_tree(self, node: BSPNode, heuristic='even'):
         best_idx = 0
@@ -578,144 +584,40 @@ class BSP:
                     processed_portals.add(portal_name)
         return [p for p in self._portals if p.name in set(portal_names)-processed_portals]
 
+    def sim_pvs(self, path):
+        penumbras = []
+        for i in range(1, len(path)-1):
+            previous_node = path[i-1]
+            current_node = path[i]
+            next_node = path[i+1]
+            source_portal = next(filter(lambda line, node: node == current_node, self.node_connectivity[previous_node].items))
+            target_portal = next(filter(lambda line, node: node == next_node, self.node_connectivity[current_node].items))
+            if len(penumbras):
+                ls = target_portal.linestring.intersection(penumbras[-1])
+                target_portal = LineSegment.from_linestring(ls, name=target_portal.name)
+            penumbra = self.compute_anti_penumbra2(source_portal, target_portal)
+            if len(penumbras):
+                last_penumbra = penumbras[-1]
+                intersection = last_penumbra.intersection(penumbra)
+                penumbra = Polygon.from_shapely(intersection)
+            penumbras.append(penumbra)
+            p = penumbra.plot()
+        return penumbras
+
+
     def gen_pvs(self):
+        self.node_pvs = dict()
         for source_node in self.empty_leaves:
+            source_node.pvs = set()
+            self.node_pvs[source_node] = dict()
             a=2
             for source_portal in source_node.portals:
                 target_node = self.node_connectivity[source_node][source_portal]
                 source_node.pvs.add(target_node)
                 target_portals = target_node.portals
-                self._gen_pvs2(source_node, target_node, source_portal, target_portals, [source_node, target_node], [source_portal])
+                self._gen_pvs(source_node, target_node, source_portal, target_portals, [source_node, target_node], [source_portal])
 
     def _gen_pvs(self, source_node, current_node, source_portal, target_portals: list,
-                 visited_nodes: list, visited_portals: list, last_penumbra=None):
-        target_portals = copy(target_portals)
-        visited_nodes = copy(visited_nodes)
-        visited_portals = copy(visited_portals)
-
-        # Check all portals except the one we are looking through
-        valid_target_portals = set(target_portals)-{visited_portals[-1]}
-        a=2
-        for target_portal in valid_target_portals:
-            if source_portal.compare(target_portal) == 'C' or source_portal.linestring.touches(target_portal.linestring):
-                a=2
-                continue
-            dest_node = self.node_connectivity[current_node][target_portal]
-
-            # Avoid circle back to visited nodes
-            # if dest_node in visited_nodes:
-            #     continue
-
-            source_node.pvs.add(dest_node)
-            ref_point, interval = self.compute_anti_penumbra(source_portal, target_portal)
-
-            penumbra = self.compute_anti_penumbra2(source_portal, target_portal)
-            if last_penumbra:
-                penumbra = last_penumbra.intersection(penumbra)
-
-            if not ref_point:
-                continue
-
-            # Plot portals
-            # source_portal.plot()
-            # plt.pause(0.01)
-            # target_portal.plot()
-            # plt.pause(0.01)
-            #
-            # interval.plot(ref_point=ref_point, radius=1000)
-            # plt.pause(0.01)
-
-            dest_portals = []
-            # Check all portals, except the once we are looking through
-            valid_destination_portals = set(dest_node.portals) - {target_portal}
-            a=2
-            for dest_portal in valid_destination_portals:
-                #dest_leaf2 =
-                # If the destination portal is collinear to the target or source portals, then we can not see the node
-                # it leads to (at least not through the target node)
-                if dest_portal.compare(target_portal) == 'C' or dest_portal.compare(source_portal) == 'C':
-                    continue
-
-                # dest_penumbra = penumbra.intersection(self.compute_anti_penumbra2(target_portal, dest_portal))
-                a=2
-                try:
-                    dest_interval = dest_portal.to_interval(ref_point)
-                except ValueError:
-                    continue
-                if dest_interval.contains_interval(interval, True):
-                    phi1 = interval.min
-                    x, y = pol2cart(1e15, phi1)
-                    x, y = (x + ref_point.x, y + ref_point.y)
-                    l1 = LineSegment(ref_point, Point(x, y))
-                    phi2 = interval.max
-                    x, y = pol2cart(1e15, phi2)
-                    x, y = (x + ref_point.x, y + ref_point.y)
-                    l2 = LineSegment(ref_point, Point(x, y))
-                    p1 = l1.linestring.intersection(dest_portal.linestring)
-                    p1 = Point(p1.x, p1.y)
-                    p2 = l2.linestring.intersection(dest_portal.linestring)
-                    if isinstance(p2, LineString):
-                        a=2
-                    p2 = Point(p2.x, p2.y)
-
-                    line = LineSegment(p1, p2, name=dest_portal.name)
-                    dest_portals.append(line)
-                elif interval.contains_interval(dest_interval):
-                    dest_portals.append(dest_portal)
-                elif interval.intersects(dest_interval):
-                    clip_min = dest_interval.contains_angle(interval.min, not_equals=True)
-                    clip_max = dest_interval.contains_angle(interval.max, not_equals=True)
-                    if not (clip_min or clip_max):
-                        continue
-                    if clip_min:
-                        phi = interval.min
-                        x, y = pol2cart(1e15, phi)
-                        x, y = (x + ref_point.x, y + ref_point.y)
-                        li = LineSegment(ref_point, Point(x, y))
-                        try:
-                            l1, l2 = li.split(dest_portal)
-                        except:
-                            a=2
-                        _, a1 = l1.p1.to_polar(ref_point)
-                        if interval.contains_angle(a1, True):
-                            line = l1
-                            # p1, p2 = l2.to_polar(ref_point)
-                        else:
-                            line = l2
-                            # p1, p2 = l1.to_polar(ref_point)
-
-                        # Generate new line and interval
-                        # phi0, dx1 = to_range2(p1[1], p2[1])
-                        # interval = AngleInterval(phi0, dx1)
-                        #dest_interval = line.to_interval(ref_point)
-                        line.name = dest_portal.name
-                    if clip_max:
-                        phi = interval.max
-                        # Split existing line, according to fov
-                        x, y = pol2cart(1e15, phi)
-                        x, y = (x + ref_point.x, y + ref_point.y)
-                        li = LineSegment(ref_point, Point(x, y))
-                        l1, l2 = li.split(dest_portal)
-
-                        _, a1 = l1.p1.to_polar(ref_point)
-                        if interval.contains_angle(a1, True):
-                            line = l1
-                            # p1, p2 = l2.to_polar(ref_point)
-                        else:
-                            line = l2
-                            # p1, p2 = l1.to_polar(ref_point)
-
-                        # Generate new line and interval
-                        # phi0, dx1 = to_range2(p1[1], p2[1])
-                        # interval = AngleInterval(phi0, dx1)
-                        #dest_interval = line.to_interval(ref_point)
-                        line.name = dest_portal.name
-                    dest_portals.append(line)
-            if len(dest_portals):
-                self._gen_pvs(source_node, dest_node, source_portal, dest_portals,
-                              visited_nodes+[dest_node], visited_portals+[target_portal])
-
-    def _gen_pvs2(self, source_node, current_node, source_portal, target_portals: list,
                   visited_nodes: list, visited_portals: list, last_penumbra=None):
         target_portals = copy(target_portals)
         visited_nodes = copy(visited_nodes)
@@ -735,6 +637,10 @@ class BSP:
             #     continue
 
             source_node.pvs.add(dest_node)
+            if dest_node in self.node_pvs[source_node]:
+                self.node_pvs[source_node][dest_node].append(visited_nodes)
+            else:
+                self.node_pvs[source_node][dest_node] = [visited_nodes]
 
             penumbra = self.compute_anti_penumbra2(visited_portals[-1], target_portal)
             if not penumbra.is_valid:
@@ -752,15 +658,6 @@ class BSP:
                 penumbra = Polygon.from_shapely(intersection)
             if not penumbra.is_valid:
                 continue
-
-            # Plot portals
-            # source_portal.plot()
-            # plt.pause(0.01)
-            # target_portal.plot()
-            # plt.pause(0.01)
-            #
-            # interval.plot(ref_point=ref_point, radius=1000)
-            # plt.pause(0.01)
 
             dest_portals = []
             # Check all portals, except the once we are looking through
@@ -780,25 +677,6 @@ class BSP:
                 if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
                     continue
 
-                # try:
-                #     lines = split(dest_portal.linestring, penumbra)
-                # except:
-                #     # Destination portal coincides with the side of the penumbra
-                #     continue
-                #
-                # contains = [penumbra.contains(l) for l in lines]
-                # truths = [i for i in contains if i]
-                # if len(truths)==0 or len(truths)>1:
-                #     a=2
-                #
-                # ls = next(l for l in lines if penumbra.contains(l))
-                #
-                # # intersections = [penumbra.intersection(l) for l in lines]
-                # # ls = next(filter(lambda l: isinstance(l, LineString) and not l.is_empty and l.length>1e-10, intersections), None)
-                #
-                # if not ls:
-                #     a=2
-                #     continue
                 if ls.length< 1e-1:
                     continue
                 dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
@@ -806,7 +684,7 @@ class BSP:
                 dest_portals.append(dest_portal)
 
             if len(dest_portals):
-                self._gen_pvs2(source_node, dest_node, source_portal, dest_portals,
+                self._gen_pvs(source_node, dest_node, source_portal, dest_portals,
                               visited_nodes + [dest_node], visited_portals + [target_portal], penumbra)
 
 
@@ -831,27 +709,6 @@ class BSP:
         p4 = Point(x4, y4)
         points = [p1, p2, p3, p4]
         return Polygon([(p.x, p.y) for p in points])
-
-
-    def compute_anti_penumbra(self, source: LineSegment, target:LineSegment):
-        line1 = LineSegment(source.p1, target.p1)
-        line2 = LineSegment(source.p2, target.p2)
-        if not line1.linestring.intersects(line2.linestring):
-            line1 = LineSegment(source.p1, target.p2)
-            line2 = LineSegment(source.p2, target.p1)
-
-
-        p = line1.linestring.intersection(line2.linestring)
-        if not p:
-            return None, None
-        p = Point(p.x, p.y)
-
-        try:
-            interval = target.to_interval(p)
-        except:
-            return None, None
-
-        return p, interval
 
 
 def cut_polygon_by_line(polygon, line):

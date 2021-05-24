@@ -8,6 +8,7 @@ import cProfile as profile
 # In outer section of code
 pr = profile.Profile()
 pr.disable()
+import pickle
 
 from bsp import BSP
 from geometry import LineSegment, Point, Polygon
@@ -163,7 +164,10 @@ def main():
     ylim = plt.ylim()
 
     print('Creating tree')
-    bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+    # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+    # pickle.dump(bsptree, open('bsp_malta_min.p', 'wb'))
+
+    bsptree = pickle.load(open('bsp_malta_min.p', 'rb'))
 
     # Plot tree graph
     fig2 = plt.figure(figsize=(8, 6))
@@ -206,10 +210,6 @@ def main():
         ax1.text(x,y, leaf.id, color='r')
     plt.pause(0.1)
 
-    print('Generating portals...', end='')
-    bsptree.gen_portals()
-    print('Done')
-
     connected_nodes = dict()
     for node1 in bsptree.empty_leaves:
         for node2 in bsptree.empty_leaves:
@@ -222,13 +222,13 @@ def main():
                     else:
                         connected_nodes[(node1, node2)] = [portal]
 
-    print('Generating PVS...', end='')
-    pr.enable()
-    bsptree.gen_pvs()
-    pr.disable()
-    print('Done')
-    print("[INFO]: Dumping Profiler stats")
-    pr.dump_stats('profile_{}.pstat'.format(1))
+    # print('Generating PVS...', end='')
+    # pr.enable()
+    # bsptree.gen_pvs()
+    # pr.disable()
+    # print('Done')
+    # print("[INFO]: Dumping Profiler stats")
+    # pr.dump_stats('profile_{}.pstat'.format(1))
 
 
     # connected_nodes = dict()

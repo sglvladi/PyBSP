@@ -9,9 +9,9 @@ from shapely.geometry.collection import GeometryCollection
 from shapely.ops import linemerge, unary_union, polygonize, split
 from stonesoup.functions import pol2cart
 
-from angles import angle_between
-from geometry import LineSegment, Point, Polygon
-from utils import extrapolate_line, merge_lines, process_line, merge_fovs2
+from .angles import angle_between
+from .geometry import LineSegment, Point, Polygon
+from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
 
 class BSPNode:
@@ -41,6 +41,13 @@ class BSPNode:
 
     def __hash__(self):
         return self.id
+
+    def __getstate__(self):
+        attributes = self.__dict__.copy()
+        return attributes
+
+    def __setstate__(self, state):
+        self.__dict__ = state
 
     @property
     def is_leaf(self):
@@ -277,7 +284,7 @@ class BSP:
         self.gen_walls()
         print('Done')
         # print('Generating PVS...', end='')
-        # self.gen_pvs()
+        self.gen_pvs()
         # print('Done')
 
     def _generate_tree(self, node: BSPNode, heuristic='even'):
@@ -315,11 +322,11 @@ class BSP:
 
         # Compute the node's splitting plane
         if pol_left and pol_right:
-            node.plane = LineSegment.from_linestring(pol_left.intersection(pol_right), line.normal, line.name)
+            node.plane = LineSegment.from_linestring(pol_left.shapely.intersection(pol_right.shapely), line.normal, line.name)
         elif pol_left:
-            node.plane = LineSegment.from_linestring(pol_left.intersection(l), line.normal, line.name)
+            node.plane = LineSegment.from_linestring(pol_left.shapely.intersection(l), line.normal, line.name)
         else:
-            node.plane = LineSegment.from_linestring(pol_right.intersection(l), line.normal, line.name)
+            node.plane = LineSegment.from_linestring(pol_right.shapely.intersection(l), line.normal, line.name)
         # Ensure normal is preserved
         a = angle_between(node.plane.normalV.to_array(), line.normalV.to_array())
         if abs(a) > np.pi/100:
@@ -490,12 +497,12 @@ class BSP:
             target_portal = next(
                 line for line, node in self.node_connectivity[current_node].items() if node == next_node)
             if len(penumbras):
-                ls = target_portal.linestring.intersection(penumbras[-1])
+                ls = target_portal.shapely.intersection(penumbras[-1].shapely)
                 target_portal = LineSegment.from_linestring(ls, name=target_portal.name)
             penumbra = compute_anti_penumbra2(source_portal, target_portal)
             if len(penumbras):
                 last_penumbra = penumbras[-1]
-                intersection = last_penumbra.intersection(penumbra)
+                intersection = last_penumbra.shapely.intersection(penumbra.shapely)
                 penumbra = Polygon.from_shapely(intersection)
             penumbras.append(penumbra)
             artists.append(penumbra.plot())
@@ -545,10 +552,10 @@ class BSP:
                 self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
 
             penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
-            if not penumbra.is_valid:
+            if not penumbra.shapely.is_valid:
                 continue
             if last_penumbra:
-                intersection = last_penumbra.intersection(penumbra)
+                intersection = last_penumbra.shapely.intersection(penumbra.shapely)
                 if isinstance(intersection, GeometryCollection):
                     intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
                 elif isinstance(intersection, MultiPolygon):
@@ -558,7 +565,7 @@ class BSP:
                 elif not isinstance(intersection, ShapelyPolygon):
                     continue
                 penumbra = Polygon.from_shapely(intersection)
-            if not penumbra.is_valid:
+            if not penumbra.shapely.is_valid:
                 continue
 
             dest_portals = []
@@ -572,10 +579,10 @@ class BSP:
                     a=2
                     continue
 
-                if not penumbra.intersects(dest_portal.linestring):
+                if not penumbra.shapely.intersects(dest_portal.shapely):
                     continue
 
-                ls = dest_portal.linestring.intersection(penumbra)
+                ls = dest_portal.shapely.intersection(penumbra.shapely)
                 if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
                     continue
 
@@ -651,10 +658,10 @@ class BSP:
                     a=2
                     continue
 
-                if not penumbra.intersects(dest_portal.linestring):
+                if not penumbra.intersects(dest_portal.shapely):
                     continue
 
-                ls = dest_portal.linestring.intersection(penumbra)
+                ls = dest_portal.shapely.intersection(penumbra)
                 if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
                     continue
 
@@ -875,7 +882,7 @@ class BSP:
 
 
 def cut_polygon_by_line(polygon, line):
-    merged = linemerge([polygon.boundary, line])
+    merged = linemerge([polygon.shapely.boundary, line])
     borders = unary_union(merged)
     polygons = polygonize(borders)
     return list(polygons)
@@ -883,8 +890,8 @@ def cut_polygon_by_line(polygon, line):
 def compute_anti_penumbra2(source, target):
     line1 = LineSegment(source.p1, target.p1)
     line2 = LineSegment(source.p2, target.p2)
-    if not line1.linestring.intersects(line2.linestring):
-        if not line1.linestring.buffer(1e-7).intersects(line2.linestring):
+    if not line1.shapely.intersects(line2.shapely):
+        if not line1.shapely.buffer(1e-7).intersects(line2.shapely):
             line1 = LineSegment(source.p1, target.p2)
             line2 = LineSegment(source.p2, target.p1)
 

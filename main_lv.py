@@ -1,12 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from copy import copy
-from shapely.geometry import Polygon, MultiLineString, shape
+from shapely.geometry import Polygon
 
-from bsp import BSP
-from geometry import LineSegment, Point
-from utils import sort_fovs, plot_nodes, remove_artists, plot_ex
+from utils.bsp import BSP
+from utils.geometry import LineSegment, Point
+from utils.functions import sort_fovs, plot_nodes
 
+import pickle
 import cProfile as profile
 # In outer section of code
 pr = profile.Profile()
@@ -131,6 +131,12 @@ def main():
 
     print('Generating tree')
     bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
+    # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+    # pickle.dump(bsptree, open('bsp_test_min.p', 'wb'))
+
+    # bsptree = pickle.load(open('bsp_test_min.p', 'rb'))
+    # bsptree.tree.data = copy(lines)
+    # bsptree.generate_tree(bsptree.tree, heuristic='random')
 
     #plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=True)
@@ -178,16 +184,16 @@ def main():
     # plt.pause(0.1)
 
     for leaf in bsptree.empty_leaves:
-        pol = leaf.polygon
+        pol = leaf.polygon.shapely
         x, y = pol.centroid.x-15, pol.centroid.y-15
         # pol.plot(color='green')
         plt.text(x, y, leaf.id, color='r', fontsize='large', fontweight='bold')
     plt.pause(0.1)
 
     for line in rendered_lines:
-        x, y = line.linestring.xy
+        x, y = line.shapely.xy
         plt.plot(x, y, 'r')
-        for point in line.linestring.boundary:
+        for point in line.shapely.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             plt.plot(x, y, 'k--', linewidth=0.2)
@@ -212,7 +218,7 @@ def main():
     art = plot_nodes(pvs)
     pol = node.polygon
     art.append(pol.plot(color='r'))
-    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
     art.append(plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
     for line in wall_pvs:
         art.append(line.plot(color='r'))
@@ -220,7 +226,7 @@ def main():
         if n in pvs or n==node:
             continue
         pol=n.polygon
-        x, y = pol.centroid.x - 15, pol.centroid.y - 15
+        x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
         art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
     plt.pause(0.1)
 

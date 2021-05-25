@@ -8,7 +8,7 @@ from stonesoup.functions import cart2pol, pol2cart
 from stonesoup.types.angle import Bearing
 from shapely.geometry import LineString
 
-from angles import to_range2, AngleInterval
+from .angles import to_range2, AngleInterval
 
 def sign(x): return int(x > 0) - int(x < 0)
 
@@ -16,23 +16,28 @@ def sign(x): return int(x > 0) - int(x < 0)
 DoubleTolerance = 1e-5
 
 
-class Point(shapely.geometry.Point):
+class Point:
     """2D cartesian coordinate representation of point"""
 
-    def __init__(self, *args):
-        self._x = 0
-        self._y = 0
-        super().__init__(*args)
-        self._x = self.coords[0][0]
-        self._y = self.coords[0][1]
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.shapely = shapely.geometry.Point(x, y)
 
-    @property
-    def x(self):
-        return self._x
+    # def __init__(self, *args):
+    #     self._x = 0
+    #     self._y = 0
+    #     super().__init__(*args)
+    #     self._x = self.coords[0][0]
+    #     self._y = self.coords[0][1]
 
-    @property
-    def y(self):
-        return self._y
+    # @property
+    # def x(self):
+    #     return self._x
+    #
+    # @property
+    # def y(self):
+    #     return self._y
 
     def __eq__(self, other):
         return np.array_equal(self.to_array(), other.to_array())
@@ -145,15 +150,13 @@ class LineSegment:
         return np.array([self.p1.x, self.p2.x]), np.array([self.p1.y, self.p2.y])
 
     @property
-    def linestring(self):
+    def shapely(self):
         return LineString((self.p1.to_array(), self.p2.to_array()))
 
     @property
     def mid_point(self):
         """returns middle point of our line segment"""
-        return Point(
-            ((self.p2.x + self.p1.x) / 2),
-            ((self.p2.y + self.p1.y) / 2))
+        return Point((self.p2.x + self.p1.x) / 2, (self.p2.y + self.p1.y) / 2)
 
     @property
     def length(self):
@@ -299,10 +302,10 @@ class LineSegment:
 class MergedLine:
     def __init__(self, lines, linestring):
         self.lines = lines
-        self.linestring = linestring
+        self.shapely = linestring
 
     def __repr__(self):
-        return "MergedLine(names={}, lines={}, linestring={})".format(self.names, self.lines, self.linestring)
+        return "MergedLine(names={}, lines={}, linestring={})".format(self.names, self.lines, self.shapely)
 
     @property
     def names(self):
@@ -310,14 +313,14 @@ class MergedLine:
 
     def to_interval(self, ref_point=None):
         points = []
-        for point in self.linestring.boundary:
+        for point in self.shapely.boundary:
             points.append(Point(point.x, point.y))
         p1, p2 = (points[0].to_polar(ref_point), points[1].to_polar(ref_point))
         mid, dx = to_range2(p1[1], p2[1])
         x, y = pol2cart(1e15, mid)
         x, y = (x + ref_point.x, y + ref_point.y)
         li = LineSegment(ref_point, Point(x, y))
-        if not li.linestring.intersects(self.linestring):
+        if not li.shapely.intersects(self.shapely):
             a1 = mid - dx
             dx2 = np.abs(a1 - (mid + np.pi))
             return AngleInterval(mid + np.pi, dx2, self.names)
@@ -327,11 +330,15 @@ class MergedLine:
         if not ax:
             ax = plt.gca()
 
-        x, y = self.linestring.xy
+        x, y = self.shapely.xy
         return ax.plot(x, y, **kwargs)
 
 
-class Polygon(shapely.geometry.Polygon):
+class Polygon:
+
+    def __init__(self, points):
+        self.points = [Point(p[0], p[1]) for p in points]
+        self.shapely = shapely.geometry.Polygon(points)
 
     def __repr__(self):
         points = [p for p in self.points]
@@ -340,15 +347,15 @@ class Polygon(shapely.geometry.Polygon):
     def __str__(self):
         return self.__repr__()
 
-    @property
-    def points(self):
-        x, y = self.exterior.xy
-        return [Point(xi, yi) for xi, yi in zip(x, y)]
+    # @property
+    # def points(self):
+    #     x, y = self.exterior.xy
+    #     return [Point(xi, yi) for xi, yi in zip(x, y)]
 
     @staticmethod
     def from_shapely(pol: shapely.geometry.Polygon):
         x, y = pol.exterior.xy
-        points = ((xi, yi) for xi, yi in zip(x, y))
+        points = [(xi, yi) for xi, yi in zip(x, y)]
         return Polygon(points)
 
     def plot(self, ax=None, **kwargs):
@@ -358,7 +365,7 @@ class Polygon(shapely.geometry.Polygon):
         if 'alpha' not in kwargs:
             kwargs['alpha'] = 0.3
 
-        x, y = self.exterior.xy
+        x, y = self.shapely.exterior.xy
         xy = np.array([x, y]).T
         polygon = pltPolygon(xy, True, **kwargs)
         p = PatchCollection([polygon], **kwargs)

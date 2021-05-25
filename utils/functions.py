@@ -1,14 +1,14 @@
 import numpy as np
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import LineString
 from shapely.ops import linemerge
 from stonesoup.functions import pol2cart
-from stonesoup.types.angle import Bearing
 import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.algorithms.components.connected import connected_components
 
-from geometry import Point, LineSegment, MergedLine
-from angles import mid_angle, to_range2, AngleInterval
+from .geometry import Point, LineSegment, MergedLine
+from .angles import to_range2
+
 
 def test2(X, alpha, delta, not_equals=False):
     a = (alpha - delta < X < alpha + delta)

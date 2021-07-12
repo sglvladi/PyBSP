@@ -8,23 +8,13 @@ import cProfile as profile
 # In outer section of code
 pr = profile.Profile()
 pr.disable()
+import datetime
 import pickle
 
+from utils import plot_nodes, remove_artists
 from bsp import BSP
 from geometry import LineSegment, Point, Polygon
 from utils import sort_fovs
-
-
-def plot_nodes(nodes, **kwargs):
-    artists = []
-    for node in nodes:
-        artists.append(node.polygon.plot(**kwargs))
-    return artists
-
-
-def remove_artists(artists):
-    for artist in artists:
-        artist.remove()
 
 
 def merc_from_arrays(lats, lons):
@@ -106,6 +96,13 @@ def main():
             "LAT_MIN": 53.37,
             "LAT_MAX": 53.46,
             "RES": 'h'
+        },
+        "MINI_MALTA": {
+            "LON_MIN": 14.16,
+            "LON_MAX": 14.37,
+            "LAT_MIN": 36,
+            "LAT_MAX": 36.1,
+            "RES": 'h'
         }
     }
     LON_MIN = LIMITS[TARGET]["LON_MIN"]
@@ -164,10 +161,10 @@ def main():
     ylim = plt.ylim()
 
     print('Creating tree')
-    # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+    bsptree = BSP(lines, heuristic='even', bounds=(xlim, ylim))
     # pickle.dump(bsptree, open('bsp_malta_min.p', 'wb'))
 
-    bsptree = pickle.load(open('bsp_malta_min.p', 'rb'))
+    # bsptree = pickle.load(open('bsp_malta_min.p', 'rb'))
 
     # Plot tree graph
     fig2 = plt.figure(figsize=(8, 6))
@@ -189,9 +186,50 @@ def main():
     print("Rendering...", end='')
     # pr.enable()
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
-    rendered_lines = bsptree.render(point1)
+    now = datetime.datetime.now()
+    rendered_lines = bsptree.render(point1, use_pvs=False)
+    print(datetime.datetime.now()-now)
+    now = datetime.datetime.now()
+    rendered_lines = bsptree.render(point1, use_pvs=True)
+    print(datetime.datetime.now()-now)
     # pr.disable()
     print("done")
+
+    node = bsptree.get_node(441)
+    pvs = node.pvs
+    wall_pvs = node.wall_pvs
+    art = plot_nodes(pvs)
+    pol = node.polygon
+    art.append(pol.plot(color='r'))
+    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    art.append(plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
+    for line in wall_pvs:
+        art.append(line.plot(color='r'))
+    # for n in bsptree.empty_leaves:
+    #     if n in pvs or node == n:
+    #         continue
+    #     pol = n.polygon
+    #     x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    #     art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
+    plt.pause(0.1)
+
+    node = bsptree.get_node(18)
+    pvs = node.pvs
+    wall_pvs = node.wall_pvs
+    plot_nodes(pvs)
+    pol = node.polygon
+    pol.plot(color='r')
+    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold')
+    for line in wall_pvs:
+        line.plot(color='r')
+    for node in bsptree.empty_leaves:
+        if node in pvs:
+            continue
+        pol = node.polygon
+        x, y = pol.centroid.x - 15, pol.centroid.y - 15
+        plt.text(x, y, node.id, color='r', fontsize='large', fontweight='bold')
+    plt.pause(0.1)
 
     colors = dict()
     for line in rendered_lines:
@@ -242,6 +280,11 @@ def main():
     #                     connected_nodes[(node1, node2)].push(portal)
     #                 else:
     #                     connected_nodes[(node1, node2)] = [portal]
+
+
+    # pvs = bsptree.get_node(37)
+    # plot_nodes(pvs)
+    # plot_ex(bsptree, pvs)
 
     for key, item in connected_nodes.items():
         key[0].polygon.plot()

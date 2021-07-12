@@ -25,7 +25,9 @@ class BSPNode:
         self.polygon = polygon
         self.plane = plane
         self.portals = []
+        self.walls = []
         self.pvs = set()
+        self.wall_pvs = set()
         self.id = id
 
     def __repr__(self):
@@ -60,6 +62,21 @@ class BSPNode:
             return True
         return False
 
+    @property
+    def leaf_children(self):
+        nodes = []
+        if self.front is not None and self.front.is_leaf:
+            nodes.append(self.front)
+        elif self.front is not None:
+            nodes += self.front.leaf_children
+
+        if self.back is not None and self.back.is_leaf:
+            nodes.append(self.back)
+        elif self.back is not None:
+            nodes += self.back.leaf_children
+        return nodes
+
+
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
@@ -69,10 +86,12 @@ class BSP:
         self.heuristic = heuristic
         self.bounds = bounds
         self._portals = []
+
         self._last_node_id = 0
         self.node_connectivity = None
         self.portal_connections = None
         self.node_pvs = dict()
+        self.wall_pvs = dict()
         if lines:
             self.generate_tree(lines)
 
@@ -254,9 +273,12 @@ class BSP:
         print('Generating portals...', end='')
         self.gen_portals()
         print('Done')
-        print('Generating PVS...', end='')
-        self.gen_pvs()
+        print('Generating walls...', end='')
+        self.gen_walls()
         print('Done')
+        # print('Generating PVS...', end='')
+        # self.gen_pvs()
+        # print('Done')
 
     def _generate_tree(self, node: BSPNode, heuristic='even'):
         best_idx = 0
@@ -270,8 +292,8 @@ class BSP:
 
         print('....')
         data = []
-        data_left = []
-        data_right = []
+        data_front = []
+        data_back = []
         line = node.data.pop(best_idx)
         data.append(line)
 
@@ -311,214 +333,34 @@ class BSP:
                 for split_line in split_lines:
                     res = line.compare(split_line)
                     if res == 'F':
-                        data_left.append(split_line)
+                        data_front.append(split_line)
                     elif res == 'B':
-                        data_right.append(split_line)
+                        data_back.append(split_line)
                     else:
                         print('Error!!', res)
             elif result == 'C':
                 data.append(line2)
             elif result == 'F':
-                data_left.append(line2)
+                data_front.append(line2)
             elif result == 'B':
-                data_right.append(line2)
+                data_back.append(line2)
 
         # Generate front node
         node.data = data
-        if not len(data_left):
-            data_left = None
-        node.front = BSPNode(data_left, parent=node, polygon=pol_left, id=self._last_node_id)
+        if not len(data_front):
+            data_front = None
+        node.front = BSPNode(data_front, parent=node, polygon=pol_left, id=self._last_node_id)
         self._last_node_id += 1
-        if data_left:
+        if data_front:
             self._generate_tree(node.front, heuristic)
 
         # Generate back node
-        if not len(data_right):
-            data_right = None
-        node.back = BSPNode(data_right, parent=node, polygon=pol_right, id=self._last_node_id)
+        if not len(data_back):
+            data_back = None
+        node.back = BSPNode(data_back, parent=node, polygon=pol_right, id=self._last_node_id)
         self._last_node_id += 1
-        if data_right:
+        if data_back:
             self._generate_tree(node.back, heuristic)
-
-    def _traverse_tree_nx(self, node, g, parent=None):
-        child = g.number_of_nodes() + 1
-        id = node.id
-        data = node.data
-        polygon = node.polygon
-        leaf = node.is_leaf
-        solid = node.is_solid
-        empty = node.is_empty
-        if polygon is not None:
-            g.add_node(child, data=data, leaf=leaf, polygon=polygon, solid=solid, empty=empty, id=id)
-            if parent:
-                g.add_edge(parent, child)
-            if node.front is not None:
-                g = self._traverse_tree_nx(node.front, g, child)
-            if node.back is not None:
-                g = self._traverse_tree_nx(node.back, g, child)
-        return g
-
-    def draw_nx(self, ax=None, show_labels=True):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.gca()
-
-        g = self.nx_graph
-        pos = graphviz_layout(g, prog="dot")
-        # pos = {n: g.nodes[n]['data'][0].getMidPoint().to_array() if g.nodes[n]['data'] else np.array([g.nodes[n]['polygon'].centroid.x, g.nodes[n]['polygon'].centroid.y])
-        #        for n in g.nodes}
-
-        nx.draw(g, pos, ax=ax)
-        leaf_nodes = [n for n in g.nodes if (g.nodes[n]['leaf'] and not g.nodes[n]['solid'])]
-        solid_nodes = [n for n in g.nodes if (g.nodes[n]['leaf'] and g.nodes[n]['solid'])]
-        nx.draw_networkx_nodes(g, pos, ax=ax, nodelist=leaf_nodes, node_color='green', node_shape='s')
-        nx.draw_networkx_nodes(g, pos, ax=ax, nodelist=solid_nodes, node_color='red', node_shape='s')
-
-        if show_labels:
-            labels = {n: [l.name for l in g.nodes[n]['data']] if g.nodes[n]['data'] else '' for n in g.nodes}
-            labels = {n: g.nodes[n]['id'] for n in g.nodes}
-            pos_labels = {}
-            for node, coords in pos.items():
-                pos_labels[node] = (coords[0] + 10, coords[1])
-            nx.draw_networkx_labels(g, pos_labels, ax=ax, labels=labels)
-
-    def draw_on_plot(self, ax=None):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.gca()
-
-        g = self.nx_graph
-        # pos = graphviz_layout(g, prog="dot")
-        pos = {n: (g.nodes[n]['data'][0].getMidPoint().to_array()) for n in g.nodes}
-        labels = {n: [l.name for l in g.nodes[n]['data']] for n in g.nodes}
-        nx.draw(g, pos, ax=ax)
-        pos_labels = {}
-        for node, coords in pos.items():
-            pos_labels[node] = (coords[0] + 10, coords[1])
-        nx.draw_networkx_labels(g, pos_labels, labels=labels)
-
-    def plot_planes(self, ax=None, color='m', linewidth=0.2, **kwargs):
-        """
-        Plot all splitting planes using matplotlib
-
-        Parameters
-        ----------
-        ax: plt.axis
-            Axis on which to draw planes
-        color: string
-            Line color
-        linewidth: float
-            Line width
-        kwargs:
-            Keyword arguments to be passed to pyplot.plot function
-
-        """
-        nodes = self.nodes
-        for node in nodes:
-            if node.plane:
-                node.plane.plot(ax=ax, color=color, linewidth=linewidth, **kwargs)
-                midpoint = node.plane.mid_point
-                if ax:
-                    ax.text(midpoint.x, midpoint.y, node.plane.name, color='y')
-                else:
-                    plt.text(midpoint.x, midpoint.y, node.plane.name, color='y')
-
-    def find_leaf(self, p: Point) -> BSPNode:
-        """
-        Return the leaf node in which a given point lies.
-
-        Parameters
-        ----------
-        p: Point
-            Point to be searched for
-
-        Returns
-        -------
-        BSPNode
-            Leaf node whose polygon contains the query point.
-
-        """
-        node = self.root
-        while True:
-            line = node.data[0]
-            if p.compare(line) > 0:
-                if not node.front:
-                    return node.front
-                node = node.front
-            elif p.compare(line) < 0:
-                if not node.back:
-                    return node.back
-                node = node.back
-
-    def render(self, ref_point, ax=None):
-        # Find the leaf node
-        leaf = self.find_leaf(ref_point)
-
-        r_lines = [] # self._render_child2(leaf, ref_point)
-        parent = leaf.parent
-
-        p_lines = []
-        if not leaf.is_root:
-            p_lines = self._render_parent(parent, leaf, ref_point)
-
-        l = r_lines + p_lines
-
-        # Convert to ranges
-        vis_lines = []
-        fov = []
-        for idx, line in enumerate(l):
-            fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
-            fov = merge_fovs2(fov)
-            if len(fov) == 1 and fov[0].delta == np.pi:
-                break
-
-        merged = merge_lines(vis_lines)
-        return merged
-
-    def _render_parent(self, parent, child, p):
-        a = parent.data[0].name
-        r_lines = parent.data
-
-        if parent.front == child:
-            if parent.back:
-                if p.compare(parent.data[0]) > 0:
-                    r_lines = r_lines + self._render_child(parent.back, p)
-                else:
-                    r_lines = self._render_child(parent.back, p) + r_lines
-        else:
-            if parent.front:
-                if p.compare(parent.data[0]) > 0:
-                    r_lines = self._render_child(parent.front, p) + r_lines
-                else:
-                    r_lines = r_lines + self._render_child(parent.front, p)
-
-        p_lines = []
-        if not parent.is_root:
-            p_lines = self._render_parent(parent.parent, parent, p)
-
-        r_lines = r_lines + p_lines
-        return r_lines
-
-    def _render_child(self, child, p):
-        a = child.data[0].name
-        r_lines = child.data
-        if child.is_leaf:
-            return r_lines
-        else:
-            r_lines_left = []
-            r_lines_right = []
-
-            if child.front:
-                r_lines_left = self._render_child(child.front, p)
-            if child.back:
-                r_lines_right = self._render_child(child.back, p)
-
-            if p.compare(child.data[0]) > 0:
-                # if point is in front of dividing plane
-                r_lines = r_lines_left + r_lines + r_lines_right
-            else:
-                r_lines = r_lines_right + r_lines + r_lines_left
-        return r_lines
 
     def gen_portals(self):
         self._portals = []
@@ -584,36 +426,93 @@ class BSP:
                     processed_portals.add(portal_name)
         return [p for p in self._portals if p.name in set(portal_names)-processed_portals]
 
+    def gen_walls(self):
+        self._replacement_portals = dict()
+        self._walls = []
+        for node in self.nodes:
+            # update node portals in case replacement or removal has occurred
+            node.walls = self._update_walls(node.walls)
+            if node.is_solid:
+                continue
+            elif node.is_empty:
+                continue
+            portal = node.plane
+            node.walls.append(portal)
+            self._walls.append(portal)
+            # Push down
+            for p in node.walls:
+                res = node.plane.compare(p)
+                if res == 'F':
+                    node.front.walls.append(p)
+                elif res == 'B':
+                    node.back.walls.append(p)
+                elif res == 'P':
+                    lines = node.plane.split(p)
+                    if node.plane.compare(lines[0]) == 'F':
+                        node.front.walls.append(lines[0])
+                        node.back.walls.append(lines[1])
+                    else:
+                        node.back.walls.append(lines[0])
+                        node.front.walls.append(lines[1])
+                    self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
+                    self._walls.remove(p)
+                    self._walls += lines
+                elif res == 'C':
+                    node.front.walls.append(p)
+                    node.back.walls.append(p)
+
+        for node in self.empty_leaves:
+            node.walls = self._update_walls(node.walls)
+
+        for node in self.empty_leaves:
+            portal_names = [p.name for p in self._portals]
+            node.walls = [p for p in node.walls if p.name not in portal_names]
+
+    def _update_walls(self, portals):
+        portal_names = [p.name for p in portals]
+        processed_portals = set()
+        while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
+            for portal_name in portal_names:
+                if portal_name in self._replacement_portals.keys()-processed_portals:
+                    portal_names += set(self._replacement_portals[portal_name])
+                    processed_portals.add(portal_name)
+        return [p for p in self._walls if p.name in set(portal_names)-processed_portals]
+
     def sim_pvs(self, path):
         penumbras = []
-        for i in range(1, len(path)-1):
-            previous_node = path[i-1]
+        artists = []
+        for i in range(1, len(path) - 1):
+            previous_node = path[i - 1]
             current_node = path[i]
-            next_node = path[i+1]
-            source_portal = next(filter(lambda line, node: node == current_node, self.node_connectivity[previous_node].items))
-            target_portal = next(filter(lambda line, node: node == next_node, self.node_connectivity[current_node].items))
+            next_node = path[i + 1]
+            source_portal = next(
+                line for line, node in self.node_connectivity[previous_node].items() if node == current_node)
+            target_portal = next(
+                line for line, node in self.node_connectivity[current_node].items() if node == next_node)
             if len(penumbras):
                 ls = target_portal.linestring.intersection(penumbras[-1])
                 target_portal = LineSegment.from_linestring(ls, name=target_portal.name)
-            penumbra = self.compute_anti_penumbra2(source_portal, target_portal)
+            penumbra = compute_anti_penumbra2(source_portal, target_portal)
             if len(penumbras):
                 last_penumbra = penumbras[-1]
                 intersection = last_penumbra.intersection(penumbra)
                 penumbra = Polygon.from_shapely(intersection)
             penumbras.append(penumbra)
-            p = penumbra.plot()
-        return penumbras
-
+            artists.append(penumbra.plot())
+            plt.pause(1)
+        return penumbras, artists
 
     def gen_pvs(self):
         self.node_pvs = dict()
         for source_node in self.empty_leaves:
             source_node.pvs = set()
             self.node_pvs[source_node] = dict()
+            source_node.wall_pvs = set(source_node.walls)
             a=2
             for source_portal in source_node.portals:
                 target_node = self.node_connectivity[source_node][source_portal]
                 source_node.pvs.add(target_node)
+                source_node.wall_pvs |= set(target_node.walls)
                 target_portals = target_node.portals
                 self._gen_pvs(source_node, target_node, source_portal, target_portals, [source_node, target_node], [source_portal])
 
@@ -633,24 +532,27 @@ class BSP:
             dest_node = self.node_connectivity[current_node][target_portal]
 
             # Avoid circle back to visited nodes
-            # if dest_node in visited_nodes:
+            # if len(visited_nodes>200):
+            #     a=2
+            # if dest_node == source_node or target_portal in visited_portals:
             #     continue
 
             source_node.pvs.add(dest_node)
+            source_node.wall_pvs |= set(dest_node.walls)
             if dest_node in self.node_pvs[source_node]:
-                self.node_pvs[source_node][dest_node].append(visited_nodes)
+                self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
             else:
-                self.node_pvs[source_node][dest_node] = [visited_nodes]
+                self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
 
-            penumbra = self.compute_anti_penumbra2(visited_portals[-1], target_portal)
+            penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
             if not penumbra.is_valid:
                 continue
             if last_penumbra:
                 intersection = last_penumbra.intersection(penumbra)
                 if isinstance(intersection, GeometryCollection):
                     intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
-                # elif isinstance(intersection, MultiPolygon):
-                #     a=2
+                elif isinstance(intersection, MultiPolygon):
+                     a=2
                 elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
                     continue
                 elif not isinstance(intersection, ShapelyPolygon):
@@ -688,27 +590,288 @@ class BSP:
                               visited_nodes + [dest_node], visited_portals + [target_portal], penumbra)
 
 
-    def compute_anti_penumbra2(self, source, target):
-        line1 = LineSegment(source.p1, target.p1)
-        line2 = LineSegment(source.p2, target.p2)
-        if not line1.linestring.intersects(line2.linestring):
-            if not line1.linestring.buffer(1e-7).intersects(line2.linestring):
-                line1 = LineSegment(source.p1, target.p2)
-                line2 = LineSegment(source.p2, target.p1)
+    def _gen_pvs2(self, source_node, current_node, source_portal, target_portals: list,
+                  visited_nodes: list, visited_portals: list, source_penumbra=None):
+        target_portals = copy(target_portals)
+        visited_nodes = copy(visited_nodes)
+        visited_portals = copy(visited_portals)
 
-        _, phi1 = line1.p2.to_polar(line1.p1)
-        _, phi2 = line2.p2.to_polar(line2.p1)
+        # Check all portals except the one we are looking through
+        valid_target_portals = set(target_portals) - {visited_portals[-1]}
+        a = 2
+        for target_portal in valid_target_portals:
+            if source_portal.compare(target_portal) == 'C':
+                a = 2
+                continue
+            dest_node = self.node_connectivity[current_node][target_portal]
 
-        p1 = line1.p2
-        p2 = line2.p2
-        x3, y3 = pol2cart(1e7, phi2)
-        x3, y3 = x3 + line2.p2.x, y3 + line2.p2.y
-        p3 = Point(x3, y3)
-        x4, y4 = pol2cart(1e7, phi1)
-        x4, y4 = x4 + line1.p2.x, y4 + line1.p2.y
-        p4 = Point(x4, y4)
-        points = [p1, p2, p3, p4]
-        return Polygon([(p.x, p.y) for p in points])
+            if dest_node == source_node or target_portal in visited_portals:
+                continue
+            if len(visited_nodes) > 200:
+                a = 2
+            # Avoid circle back to visited nodes
+            # if dest_node in visited_nodes:
+            #     continue
+
+            source_node.pvs.add(dest_node)
+            if dest_node in self.node_pvs[source_node]:
+                self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
+            else:
+                self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
+
+            old_penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
+            if not old_penumbra.is_valid:
+                continue
+            if source_penumbra:
+                intersection = source_penumbra.intersection(old_penumbra)
+                if isinstance(intersection, GeometryCollection):
+                    intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
+                elif isinstance(intersection, MultiPolygon):
+                     a=2
+                elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
+                    continue
+                elif not isinstance(intersection, ShapelyPolygon):
+                    continue
+                penumbra = Polygon.from_shapely(intersection)
+            else:
+                source_penumbra = old_penumbra
+                penumbra = old_penumbra
+
+            if not penumbra.is_valid:
+                continue
+
+            dest_portals = []
+            # Check all portals, except the once we are looking through
+            valid_destination_portals = set(dest_node.portals) - {target_portal}
+            a=2
+            for dest_portal in valid_destination_portals:
+                # If the destination portal is collinear to the target or source portals, then we can not see the node
+                # it leads to (at least not through the target node)
+                if dest_portal.compare(target_portal) == 'C' or dest_portal.compare(source_portal) == 'C':
+                    a=2
+                    continue
+
+                if not penumbra.intersects(dest_portal.linestring):
+                    continue
+
+                ls = dest_portal.linestring.intersection(penumbra)
+                if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
+                    continue
+
+                if ls.length< 1e-1:
+                    continue
+                dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
+                a = 2
+                dest_portals.append(dest_portal)
+
+            if len(dest_portals):
+                self._gen_pvs2(source_node, dest_node, source_portal, dest_portals,
+                              visited_nodes + [dest_node], visited_portals + [target_portal], source_penumbra)
+
+    def _traverse_tree_nx(self, node, g, parent=None):
+        child = g.number_of_nodes() + 1
+        id = node.id
+        data = node.data
+        polygon = node.polygon
+        leaf = node.is_leaf
+        solid = node.is_solid
+        empty = node.is_empty
+        if polygon is not None:
+            g.add_node(child, data=data, leaf=leaf, polygon=polygon, solid=solid, empty=empty, id=id)
+            if parent:
+                g.add_edge(parent, child)
+            if node.front is not None:
+                g = self._traverse_tree_nx(node.front, g, child)
+            if node.back is not None:
+                g = self._traverse_tree_nx(node.back, g, child)
+        return g
+
+    def draw_nx(self, ax=None, show_labels=True):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.gca()
+
+        g = self.nx_graph
+        pos = graphviz_layout(g, prog="dot")
+        # pos = {n: g.nodes[n]['data'][0].getMidPoint().to_array() if g.nodes[n]['data'] else np.array([g.nodes[n]['polygon'].centroid.x, g.nodes[n]['polygon'].centroid.y])
+        #        for n in g.nodes}
+
+        nx.draw(g, pos, ax=ax)
+        leaf_nodes = [n for n in g.nodes if (g.nodes[n]['leaf'] and not g.nodes[n]['solid'])]
+        solid_nodes = [n for n in g.nodes if (g.nodes[n]['leaf'] and g.nodes[n]['solid'])]
+        nx.draw_networkx_nodes(g, pos, ax=ax, nodelist=leaf_nodes, node_color='green', node_shape='s')
+        nx.draw_networkx_nodes(g, pos, ax=ax, nodelist=solid_nodes, node_color='red', node_shape='s')
+
+        if show_labels:
+            labels = {n: [l.name for l in g.nodes[n]['data']] if g.nodes[n]['data'] else '' for n in g.nodes}
+            labels = {n: g.nodes[n]['id'] for n in g.nodes} #  if g.nodes[n]['leaf']}
+            pos_labels = {}
+            for node, coords in pos.items():
+                # if g.nodes[node]['leaf']:
+                pos_labels[node] = (coords[0], coords[1])
+            nx.draw_networkx_labels(g, pos_labels, ax=ax, labels=labels, font_color='white')
+
+    def draw_on_plot(self, ax=None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.gca()
+
+        g = self.nx_graph
+        # pos = graphviz_layout(g, prog="dot")
+        pos = {n: (g.nodes[n]['data'][0].getMidPoint().to_array()) for n in g.nodes}
+        labels = {n: [l.name for l in g.nodes[n]['data']] for n in g.nodes}
+        nx.draw(g, pos, ax=ax)
+        pos_labels = {}
+        for node, coords in pos.items():
+            pos_labels[node] = (coords[0] + 10, coords[1])
+        nx.draw_networkx_labels(g, pos_labels, labels=labels)
+
+    def plot_planes(self, ax=None, color='m', linewidth=0.2, annotate=False, **kwargs):
+        """
+        Plot all splitting planes using matplotlib
+
+        Parameters
+        ----------
+        ax: plt.axis
+            Axis on which to draw planes
+        color: string
+            Line color
+        linewidth: float
+            Line width
+        kwargs:
+            Keyword arguments to be passed to pyplot.plot function
+
+        """
+        if not ax:
+            ax = plt.gca()
+        nodes = self.nodes
+        for node in nodes:
+            if node.plane:
+                node.plane.plot(ax=ax, color=color, linewidth=linewidth, **kwargs)
+                midpoint = node.plane.mid_point
+                if annotate:
+                    ax.text(midpoint.x, midpoint.y, node.plane.name, color='y')
+
+    def find_leaf(self, p: Point) -> BSPNode:
+        """
+        Return the leaf node in which a given point lies.
+
+        Parameters
+        ----------
+        p: Point
+            Point to be searched for
+
+        Returns
+        -------
+        BSPNode
+            Leaf node whose polygon contains the query point.
+
+        """
+        node = self.root
+        while True:
+            plane = node.plane
+            if p.compare(plane) > 0:
+                if node.front.is_leaf:
+                    return node.front
+                node = node.front
+            elif p.compare(plane) < 0:
+                if node.back.is_leaf:
+                    return node.back
+                node = node.back
+            else:
+                if node.front.is_empty:
+                    return node.front
+                if node.back.is_empty:
+                    return node.back
+                return node.front
+
+    def render(self, ref_point, ax=None, use_pvs=True):
+        # Find the leaf node
+        leaf = self.find_leaf(ref_point)
+
+        r_lines = [] # self._render_child2(leaf, ref_point)
+        parent = leaf.parent
+
+        p_lines = []
+        if not leaf.is_root:
+            p_lines = self._render_parent(parent, leaf, ref_point)
+
+        l = r_lines + p_lines
+
+        # Convert to ranges
+        vis_lines = []
+        fov = []
+        for idx, line in enumerate(l):
+            if not use_pvs:
+                fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
+                fov = merge_fovs2(fov)
+                if len(fov) == 1 and fov[0].delta == np.pi:
+                    break
+            else:
+                w_pvs_names = set([line.name.split('_')[0] for line in leaf.wall_pvs])
+                if line.name.split('_')[0] in w_pvs_names:
+                    fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
+                    fov = merge_fovs2(fov)
+                    if len(fov) == 1 and fov[0].delta == np.pi:
+                        break
+                else:
+                    a=2
+                    continue
+
+        merged = merge_lines(vis_lines)
+        return merged
+
+    def _render_parent(self, parent, child, p):
+        a = parent.data[0].name
+        r_lines = parent.data
+
+        if parent.front == child:
+            if parent.back:
+                if p.compare(parent.data[0]) > 0:
+                    r_lines = r_lines + self._render_child(parent.back, p)
+                else:
+                    r_lines = self._render_child(parent.back, p) + r_lines
+        else:
+            if parent.front:
+                if p.compare(parent.data[0]) > 0:
+                    r_lines = self._render_child(parent.front, p) + r_lines
+                else:
+                    r_lines = r_lines + self._render_child(parent.front, p)
+
+        p_lines = []
+        if not parent.is_root:
+            p_lines = self._render_parent(parent.parent, parent, p)
+
+        r_lines = r_lines + p_lines
+        return r_lines
+
+    def _render_child(self, child, p):
+        a = child.data[0].name
+        r_lines = child.data
+        if child.is_leaf:
+            return r_lines
+        else:
+            r_lines_left = []
+            r_lines_right = []
+
+            if child.front:
+                r_lines_left = self._render_child(child.front, p)
+            if child.back:
+                r_lines_right = self._render_child(child.back, p)
+
+            if p.compare(child.data[0]) > 0:
+                # if point is in front of dividing plane
+                r_lines = r_lines_left + r_lines + r_lines_right
+            else:
+                r_lines = r_lines_right + r_lines + r_lines_left
+        return r_lines
+
+    def plot_longest_path(self, n1, n2):
+        path_lens = [len(p) for p in self.node_pvs[n1][n2]]
+        path_idx = np.argmax(path_lens)
+        path = self.node_pvs[n1][n2][path_idx]
+        _, artists = self.sim_pvs(path)
+        return artists
 
 
 def cut_polygon_by_line(polygon, line):
@@ -716,3 +879,25 @@ def cut_polygon_by_line(polygon, line):
     borders = unary_union(merged)
     polygons = polygonize(borders)
     return list(polygons)
+
+def compute_anti_penumbra2(source, target):
+    line1 = LineSegment(source.p1, target.p1)
+    line2 = LineSegment(source.p2, target.p2)
+    if not line1.linestring.intersects(line2.linestring):
+        if not line1.linestring.buffer(1e-7).intersects(line2.linestring):
+            line1 = LineSegment(source.p1, target.p2)
+            line2 = LineSegment(source.p2, target.p1)
+
+    _, phi1 = line1.p2.to_polar(line1.p1)
+    _, phi2 = line2.p2.to_polar(line2.p1)
+
+    p1 = line1.p2
+    p2 = line2.p2
+    x3, y3 = pol2cart(1e7, phi2)
+    x3, y3 = x3 + line2.p2.x, y3 + line2.p2.y
+    p3 = Point(x3, y3)
+    x4, y4 = pol2cart(1e7, phi1)
+    x4, y4 = x4 + line1.p2.x, y4 + line1.p2.y
+    p4 = Point(x4, y4)
+    points = [p1, p2, p3, p4]
+    return Polygon([(p.x, p.y) for p in points])

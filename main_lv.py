@@ -5,7 +5,7 @@ from shapely.geometry import Polygon, MultiLineString, shape
 
 from bsp import BSP
 from geometry import LineSegment, Point
-from utils import sort_fovs
+from utils import sort_fovs, plot_nodes, remove_artists, plot_ex
 
 import cProfile as profile
 # In outer section of code
@@ -14,7 +14,7 @@ pr.disable()
 
 # a = np.random.randint(10000)
 # print(a)
-np.random.seed(6951)
+np.random.seed(6952)
 
 def generate_polygons():
     lines = []
@@ -122,35 +122,22 @@ def generate_ref_point(polygons):
 def main():
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 800
-    SHOW_NORMALS = True
+    SHOW_NORMALS = False
     ANNOTATE_LINES = True
 
     print('Generating line segments')
     lines, polygons = generate_polygons()
     point1 = generate_ref_point(polygons)
 
-    ## Get all 'LineString' objects
-    # lines2 = [line.linestring for line in lines]
-    # ## Convert to 'MultiString'
-    # lines2 = MultiLineString([line.xy for line in lines2])
-    # ## Convert Lines to Polygons by applying a tiny buffer
-    # lines = lines2.buffer(0.0000000000001)
-    # ## Get outer boundary of the lines as a polygon
-    # boundary = lines2.convex_hull
-    # ## Get a difference to generate a multipolygon
-    # multipolygons = boundary.difference(lines2)
-
     print('Generating tree')
     bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
-    # bsptree.tree.data = copy(lines)
-    # bsptree.generate_tree(bsptree.tree, heuristic='random')
 
     #plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=True)
 
     plt.figure(figsize=(8, 6))
     # plot_planes(bsptree.tree, xlim=(-100, 900), ylim=(-100, 900))
-    bsptree.plot_planes()
+    bsptree.plot_planes(annotate=False)
     for line in lines:
         x = [line.p1.x, line.p2.x]
         y = [line.p1.y, line.p2.y]
@@ -180,6 +167,23 @@ def main():
     # rendered_lines = bsptree.render2(point1)333333333333333333333333333313
     # merged_lines = merge_lines2(rendered_lines)
 
+    # for node in bsptree.empty_leaves:
+    #     pol = node.polygon
+    #     color = list(np.random.rand(3))
+    #     pol.plot(color=color, linewidth=0)
+    #     x, y = pol.centroid.x-15, pol.centroid.y-15
+    #     plt.text(x, y, node.id, color=color, fontsize='large', fontweight='bold')
+    #     for line in node.walls:
+    #         line.plot(color=color, linewidth=2)
+    # plt.pause(0.1)
+
+    for leaf in bsptree.empty_leaves:
+        pol = leaf.polygon
+        x, y = pol.centroid.x-15, pol.centroid.y-15
+        # pol.plot(color='green')
+        plt.text(x, y, leaf.id, color='r', fontsize='large', fontweight='bold')
+    plt.pause(0.1)
+
     for line in rendered_lines:
         x, y = line.linestring.xy
         plt.plot(x, y, 'r')
@@ -194,12 +198,52 @@ def main():
     # plt.pause(0.01)
 
     # p = a.area()
+    # bsptree.gen_pvs()
 
-    for leaf in bsptree.empty_leaves:
-        pol = leaf.polygon
-        x, y = pol.centroid.x, pol.centroid.y
-        plt.text(x,y, leaf.id, color='r')
+    # for leaf in bsptree.empty_leaves:
+    #     pol = leaf.polygon
+    #     x, y = pol.centroid.x, pol.centroid.y
+    #     plt.text(x,y, leaf.id, color='r')
+    # plt.pause(0.1)
+
+    node = bsptree.get_node(18)
+    pvs = node.pvs
+    wall_pvs = node.wall_pvs
+    art = plot_nodes(pvs)
+    pol = node.polygon
+    art.append(pol.plot(color='r'))
+    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    art.append(plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
+    for line in wall_pvs:
+        art.append(line.plot(color='r'))
+    for n in bsptree.empty_leaves:
+        if n in pvs or n==node:
+            continue
+        pol=n.polygon
+        x, y = pol.centroid.x - 15, pol.centroid.y - 15
+        art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
     plt.pause(0.1)
+
+
+
+    ## PLot portals
+    # for leaf in bsptree.empty_leaves:
+    #     pol = leaf.polygon
+    #     x, y = pol.centroid.x-15, pol.centroid.y-15
+    #     pol.plot(color='green')
+    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
+    # plt.pause(0.1)
+    #
+    # for leaf in bsptree.solid_leaves:
+    #     pol = leaf.polygon
+    #     x, y = pol.centroid.x-15, pol.centroid.y-15
+    #     pol.plot(color='red')
+    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
+    # plt.pause(0.1)
+    #
+    # for portal in bsptree._portals:
+    #     portal.plot(linewidth=3)
+    # plt.pause(0.1)
 
     # for portal, nodes in bsptree.portal_connections.items():
     #     p = portal.plot(color='b')
@@ -209,12 +253,20 @@ def main():
     #     p.remove()
     #     n1.remove()
     #     n2.remove()
-    bsptree.gen_portals()
-    pr.enable()
-    bsptree.gen_pvs()
-    pr.disable()
-    print("[INFO]: Dumping Profiler stats")
-    pr.dump_stats('profile_{}.pstat'.format(1))
+    # bsptree.gen_portals()
+    # pr.enable()
+    # bsptree.gen_pvs()
+    # pr.disable()
+    # print("[INFO]: Dumping Profiler stats")
+    # pr.dump_stats('profile_{}.pstat'.format(1))
+    n1 = bsptree.get_node(3)
+    n2 = bsptree.get_node(8)
+
+    path_lens = [len(p) for p in bsptree.node_pvs[n1][n2]]
+    path_idx = np.argmax(path_lens)
+    path = bsptree.node_pvs[n1][n2][path_idx]
+
+    bsptree.sim_pvs(path)
 
     connected_nodes = dict()
     for node1 in bsptree.empty_leaves:

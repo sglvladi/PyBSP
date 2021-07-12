@@ -346,3 +346,32 @@ def sort_fovs(fovs):
     sorted_idx = np.argsort([fov.mid for fov in fovs])
     sorted = [fovs[idx] for idx in sorted_idx]
     return sorted
+
+
+def plot_nodes(nodes, **kwargs):
+    artists = []
+    for node in nodes:
+        artists.append(node.polygon.plot(**kwargs))
+    return artists
+
+
+def remove_artists(artists):
+    for artist in artists:
+        artist.remove()
+
+
+def plot_ex(bsptree, pvs):
+    node = bsptree.root
+    _plot_ex(node, pvs)
+
+def _plot_ex(node, pvs):
+    if node.data and len(node.data)>1:
+        a=2
+    empty_leaves = [n for n in node.leaf_children if n.is_empty]
+    if all([n in pvs for n in empty_leaves]):
+        node.data[0].plot()
+        a=2
+    if node.front is not None and not node.front.is_leaf:
+        _plot_ex(node.front, pvs)
+    if node.back is not None and not node.back.is_leaf:
+        _plot_ex(node.back, pvs)

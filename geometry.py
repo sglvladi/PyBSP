@@ -67,6 +67,7 @@ class Point(shapely.geometry.Point):
         int
             1  - Point is in direction of line normal (in front)
             -1 - Point is in opposite direction of line normal (behind)
+            0  - Point is on line
 
         """
         dot = np.dot(line.normalV.to_array(), self.to_array() - line.mid_point.to_array())
@@ -354,9 +355,12 @@ class Polygon(shapely.geometry.Polygon):
         if not ax:
             ax = plt.gca()
 
+        if 'alpha' not in kwargs:
+            kwargs['alpha'] = 0.3
+
         x, y = self.exterior.xy
         xy = np.array([x, y]).T
         polygon = pltPolygon(xy, True, **kwargs)
-        p = PatchCollection([polygon], alpha=0.3, **kwargs)
+        p = PatchCollection([polygon], **kwargs)
         ax.add_collection(p)
         return p

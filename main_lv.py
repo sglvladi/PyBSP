@@ -131,10 +131,11 @@ def main():
 
     print('Generating tree')
     bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
-    # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
-    # pickle.dump(bsptree, open('bsp_test_min.p', 'wb'))
+    # # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
+    pickle.dump(bsptree, open('trees/bsp_test_min.p', 'wb'))
 
-    # bsptree = pickle.load(open('bsp_test_min.p', 'rb'))
+    bsptree = pickle.load(open('trees/bsp_test_min.p', 'rb'))
+
     # bsptree.tree.data = copy(lines)
     # bsptree.generate_tree(bsptree.tree, heuristic='random')
 

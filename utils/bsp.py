@@ -40,14 +40,20 @@ class BSPNode:
         return self.id == other.id
 
     def __hash__(self):
-        return self.id
+        return hash(self.id)
 
     def __getstate__(self):
         attributes = self.__dict__.copy()
+        attributes['pvs'] = tuple(self.pvs)
         return attributes
 
     def __setstate__(self, state):
-        self.__dict__ = state
+        # state['pvs'] = set(state['pvs'])
+        self.__dict__.update(state)
+        self.pvs = set()
+        for node in state['pvs']:
+            a=2
+
 
     @property
     def is_leaf(self):
@@ -283,9 +289,9 @@ class BSP:
         print('Generating walls...', end='')
         self.gen_walls()
         print('Done')
-        # print('Generating PVS...', end='')
+        print('Generating PVS...', end='')
         self.gen_pvs()
-        # print('Done')
+        print('Done')
 
     def _generate_tree(self, node: BSPNode, heuristic='even'):
         best_idx = 0
@@ -332,7 +338,7 @@ class BSP:
         if abs(a) > np.pi/100:
             node.plane = LineSegment(node.plane.p1, node.plane.p2, -node.plane.normal, node.plane.name)
 
-        #
+        # Process lines
         for i, line2 in enumerate(node.data):
             result = line.compare(line2)
             if result == 'P':
@@ -522,6 +528,8 @@ class BSP:
                 source_node.wall_pvs |= set(target_node.walls)
                 target_portals = target_node.portals
                 self._gen_pvs(source_node, target_node, source_portal, target_portals, [source_node, target_node], [source_portal])
+            source_node.pvs = list(source_node.pvs)
+            # source_node.wall_pvs = list(source_node.wall_pvs)
 
     def _gen_pvs(self, source_node, current_node, source_portal, target_portals: list,
                   visited_nodes: list, visited_portals: list, last_penumbra=None):

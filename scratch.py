@@ -1,9 +1,5 @@
-import pickle
 import matplotlib.pyplot as plt
 import numpy as np
-from copy import copy
-from shapely.geometry import LineString
-from shapely.ops import linemerge
 import cProfile as profile
 # In outer section of code
 pr = profile.Profile()
@@ -11,11 +7,13 @@ pr.disable()
 import datetime
 import pickle
 
-from utils import plot_nodes, remove_artists
-from bsp import BSP
-from geometry import LineSegment, Point, Polygon
-from utils import sort_fovs
+from utils.functions import plot_nodes, sort_fovs
+from utils.bsp import BSP
+from utils.geometry import LineSegment, Point, Polygon
 
+import sys
+
+sys.setrecursionlimit(10000000)
 
 def merc_from_arrays(lats, lons):
     r_major = 6378137.000
@@ -33,7 +31,7 @@ def generate_ref_point(polygons):
 
 def main():
     SHOW_PLANES = True
-    TARGET = "MALTA"
+    TARGET = "GLOBAL"
     LIMITS = {
         "TEST": {
             "LON_MIN": -62.,
@@ -114,13 +112,13 @@ def main():
     X_MIN, X_MAX = xs
     Y_MIN, Y_MAX = ys
     target_polygon = Polygon([(X_MIN, Y_MIN), (X_MIN, Y_MAX), (X_MAX, Y_MAX), (X_MAX, Y_MIN)])
-    polygons = pickle.load(open('polygons.p', 'rb'))
+    polygons = pickle.load(open('shapefiles/polygons.p', 'rb'))
     print('Loaded polygons')
 
     print('Generating lines')
     lines = []
     for polygon in polygons:
-        if target_polygon.contains(polygon):
+        if target_polygon.shapely.contains(polygon):
             x, y = polygon.exterior.xy
             # plt.plot(x, y)
 
@@ -162,9 +160,9 @@ def main():
 
     print('Creating tree')
     bsptree = BSP(lines, heuristic='even', bounds=(xlim, ylim))
-    # pickle.dump(bsptree, open('bsp_malta_min.p', 'wb'))
+    pickle.dump(bsptree, open('trees/bsp_global_min.p', 'wb'))
 
-    # bsptree = pickle.load(open('bsp_malta_min.p', 'rb'))
+    # bsptree = pickle.load(open('trees/bsp_malta_min.p', 'rb'))
 
     # Plot tree graph
     fig2 = plt.figure(figsize=(8, 6))
@@ -201,7 +199,7 @@ def main():
     art = plot_nodes(pvs)
     pol = node.polygon
     art.append(pol.plot(color='r'))
-    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
     art.append(plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
     for line in wall_pvs:
         art.append(line.plot(color='r'))
@@ -219,7 +217,7 @@ def main():
     plot_nodes(pvs)
     pol = node.polygon
     pol.plot(color='r')
-    x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
     plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold')
     for line in wall_pvs:
         line.plot(color='r')
@@ -227,7 +225,7 @@ def main():
         if node in pvs:
             continue
         pol = node.polygon
-        x, y = pol.centroid.x - 15, pol.centroid.y - 15
+        x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
         plt.text(x, y, node.id, color='r', fontsize='large', fontweight='bold')
     plt.pause(0.1)
 
@@ -236,7 +234,7 @@ def main():
         color = np.random.rand(1, 3)
         colors[tuple(line.names)] = color
         line.plot(ax=ax1, color=color)
-        for point in line.linestring.boundary:
+        for point in line.shapely.boundary:
             x = [point.x, point1.x]
             y = [point.y, point1.y]
             ax1.plot(x, y, 'k--', linewidth=0.2)
@@ -244,7 +242,7 @@ def main():
 
     for leaf in bsptree.empty_leaves:
         pol = leaf.polygon
-        x, y = pol.centroid.x, pol.centroid.y
+        x, y = pol.shapely.centroid.x, pol.shapely.centroid.y
         ax1.text(x,y, leaf.id, color='r')
     plt.pause(0.1)
 

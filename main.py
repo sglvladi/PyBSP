@@ -3,8 +3,8 @@ import pygame
 from pygame.locals import QUIT
 import numpy as np
 
-from bsp import BSP
-from geometry import LineSegment, Point
+from utils.bsp import BSP
+from utils.geometry import LineSegment, Point
 
 
 def sign(x): return (x > 0) - (x < 0)

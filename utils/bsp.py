@@ -14,6 +14,28 @@ from .geometry import LineSegment, Point, Polygon
 from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
 
+from multiprocessing import Pool, cpu_count
+import tqdm
+import random
+from joblib import Parallel, delayed
+
+def min_partitions(idx, line, lines):
+# def min_partitions(args):
+#     idx, line, lines = args
+    partition_count = 0
+    # if len(lines) > 1000:
+    #     samples = random.sample(lines, 1000)
+    # else:
+    samples = lines
+    for idx2, line2 in enumerate(samples):
+        # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
+        if idx != idx2:
+            res = line.compare(line2)
+            if res == 'P':
+                partition_count += 1
+    print('Done {}'.format(idx))
+    return idx, partition_count
+
 class BSPNode:
     """BSP Node class"""
     def __init__(self, data=[], parent=None, polygon=None, plane=None, id=None):
@@ -42,17 +64,17 @@ class BSPNode:
     def __hash__(self):
         return hash(self.id)
 
-    def __getstate__(self):
-        attributes = self.__dict__.copy()
-        attributes['pvs'] = tuple(self.pvs)
-        return attributes
-
-    def __setstate__(self, state):
-        # state['pvs'] = set(state['pvs'])
-        self.__dict__.update(state)
-        self.pvs = set()
-        for node in state['pvs']:
-            a=2
+    # def __getstate__(self):
+    #     attributes = self.__dict__.copy()
+    #     attributes['pvs'] = tuple(self.pvs)
+    #     return attributes
+    #
+    # def __setstate__(self, state):
+    #     # state['pvs'] = set(state['pvs'])
+    #     self.__dict__.update(state)
+    #     self.pvs = set()
+    #     for node in state['pvs']:
+    #         a=2
 
 
     @property
@@ -93,7 +115,7 @@ class BSPNode:
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
-    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800))):
+    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), pool=None):
         """Constructor, initializes binary tree"""
         self.root = BSPNode()
         self.heuristic = heuristic
@@ -106,7 +128,7 @@ class BSP:
         self.node_pvs = dict()
         self.wall_pvs = dict()
         if lines:
-            self.generate_tree(lines)
+            self.generate_tree(lines, pool=pool)
 
 
     @property
@@ -204,26 +226,44 @@ class BSP:
     def get_node(self, id):
         return next(filter(lambda node: node.id == id, self.nodes), None)
 
-    def heuristic_min_partition(self, lines) -> int:
+    def heuristic_min_partition(self, lines, pool=None) -> int:
         """
         Returns the index of the line segment which causes the least amount of partitions with
         other line segments in the list.
         """
         min_idx = 0
-        min_partition = np.inf
+        if pool:
+            inputs = [(idx, line, lines) for idx, line in enumerate(lines)]
+            # mins = list(tqdm.tqdm(self.pool.istarmap(min_partitions, inputs), total=len(inputs)))
+            # mins = []
+            # for _ in tqdm.tqdm(self.pool.imap_unordered(min_partitions, inputs), total=len(inputs)):
+            #     pass
+            #     mins.append(result)
+            # mins = self.pool.starmap(min_partitions, [(idx, line, lines) for idx, line in enumerate(lines)])
+            # mins = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(min_partitions)(idx, line, lines) for idx, line in enumerate(lines))
 
-        for idx1, line1 in enumerate(lines):
-            partition_count = 0
-            for idx2, line2 in enumerate(lines):
-                # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
-                if idx1 != idx2:
-                    res = line1.compare(line2)
-                    if res == 'P':
-                        partition_count += 1
+            # mins = self.pool.imap_unordered(min_partitions, inputs)
+            mins = pool.starmap(min_partitions, inputs)
+            mins_0 = [m[0] for m in mins]
+            mins_1 = [m[1] for m in mins]
+            min_idx_tmp = np.argmin(mins_1)
+            min_idx = mins_0[min_idx_tmp]
+        else:
+            min_partition = np.inf
+            for idx1, line1 in enumerate(lines):
+                partition_count = 0
+                for idx2, line2 in enumerate(lines):
+                    # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
+                    if idx1 != idx2:
+                        res = line1.compare(line2)
+                        if res == 'P':
+                            partition_count += 1
 
-            if partition_count < min_partition:
-                min_partition = partition_count
-                min_idx = idx1
+                if partition_count < min_partition:
+                    min_partition = partition_count
+                    min_idx = idx1
+
+                print('Done {}'.format(idx1))
 
         return min_idx
 
@@ -261,7 +301,7 @@ class BSP:
 
         return best_idx
 
-    def generate_tree(self, lines, heuristic=None):
+    def generate_tree(self, lines, heuristic=None, pool=None):
         """
         Generates the binary space partition tree recursively using the provided lines and specified heuristic
 
@@ -282,7 +322,7 @@ class BSP:
         self._last_node_id = 0
         self.root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
         self._last_node_id += 1
-        self._generate_tree(self.root, self.heuristic)
+        self._generate_tree(self.root, self.heuristic, pool)
         print('Generating portals...', end='')
         self.gen_portals()
         print('Done')
@@ -290,16 +330,17 @@ class BSP:
         self.gen_walls()
         print('Done')
         print('Generating PVS...', end='')
-        self.gen_pvs()
+        self.gen_pvs(pool)
         print('Done')
+        self.pool = None
 
-    def _generate_tree(self, node: BSPNode, heuristic='even'):
+    def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
         # print('heuristic')
         if heuristic == 'min':
-            best_idx = self.heuristic_min_partition(node.data)
+            best_idx = self.heuristic_min_partition(node.data, pool)
         elif heuristic == 'even':
-            best_idx = self.heuristic_even_partition(node.data)
+            best_idx = self.heuristic_even_partition(node.data, pool)
         elif heuristic == 'random':
             best_idx = np.random.randint(len(node.data))
 
@@ -515,24 +556,51 @@ class BSP:
             plt.pause(1)
         return penumbras, artists
 
-    def gen_pvs(self):
+    def gen_pvs(self, pool=None):
         self.node_pvs = dict()
-        for source_node in self.empty_leaves:
-            source_node.pvs = set()
-            self.node_pvs[source_node] = dict()
-            source_node.wall_pvs = set(source_node.walls)
-            a=2
-            for source_portal in source_node.portals:
-                target_node = self.node_connectivity[source_node][source_portal]
-                source_node.pvs.add(target_node)
-                source_node.wall_pvs |= set(target_node.walls)
-                target_portals = target_node.portals
-                self._gen_pvs(source_node, target_node, source_portal, target_portals, [source_node, target_node], [source_portal])
-            source_node.pvs = list(source_node.pvs)
-            # source_node.wall_pvs = list(source_node.wall_pvs)
+        if pool:
+            inputs = [(self, source_node) for source_node in self.empty_leaves]
 
-    def _gen_pvs(self, source_node, current_node, source_portal, target_portals: list,
-                  visited_nodes: list, visited_portals: list, last_penumbra=None):
+            nodes = pool.starmap(BSP._gen_pvs, inputs)
+            for node in nodes:
+                e_node = next(n for n in self.empty_leaves if n==node)
+                e_node.pvs = node.pvs
+                e_node.wall_pvs = node.wall_pvs
+            a=2
+        else:
+            for source_node in self.empty_leaves:
+                source_node.pvs = set()
+                self.node_pvs[source_node] = dict()
+                source_node.wall_pvs = set(source_node.walls)
+                a=2
+                for source_portal in source_node.portals:
+                    target_node = self.node_connectivity[source_node][source_portal]
+                    source_node.pvs.add(target_node)
+                    source_node.wall_pvs |= set(target_node.walls)
+                    target_portals = target_node.portals
+                    self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
+                                            [source_node, target_node], [source_portal])
+                source_node.pvs = list(source_node.pvs)
+                # source_node.wall_pvs = list(source_node.wall_pvs)
+
+    def _gen_pvs(self, source_node):
+        source_node.pvs = set()
+        self.node_pvs[source_node] = dict()
+        source_node.wall_pvs = set(source_node.walls)
+        a = 2
+        for source_portal in source_node.portals:
+            target_node = self.node_connectivity[source_node][source_portal]
+            source_node.pvs.add(target_node)
+            source_node.wall_pvs |= set(target_node.walls)
+            target_portals = target_node.portals
+            self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals, [source_node, target_node],
+                                    [source_portal])
+        # source_node.pvs = list(source_node.pvs)
+        source_node.pvs = [n.id for n in source_node.pvs]
+        return source_node
+
+    def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals: list,
+                           visited_nodes: list, visited_portals: list, last_penumbra=None):
         target_portals = copy(target_portals)
         visited_nodes = copy(visited_nodes)
         visited_portals = copy(visited_portals)
@@ -601,87 +669,8 @@ class BSP:
                 dest_portals.append(dest_portal)
 
             if len(dest_portals):
-                self._gen_pvs(source_node, dest_node, source_portal, dest_portals,
-                              visited_nodes + [dest_node], visited_portals + [target_portal], penumbra)
-
-
-    def _gen_pvs2(self, source_node, current_node, source_portal, target_portals: list,
-                  visited_nodes: list, visited_portals: list, source_penumbra=None):
-        target_portals = copy(target_portals)
-        visited_nodes = copy(visited_nodes)
-        visited_portals = copy(visited_portals)
-
-        # Check all portals except the one we are looking through
-        valid_target_portals = set(target_portals) - {visited_portals[-1]}
-        a = 2
-        for target_portal in valid_target_portals:
-            if source_portal.compare(target_portal) == 'C':
-                a = 2
-                continue
-            dest_node = self.node_connectivity[current_node][target_portal]
-
-            if dest_node == source_node or target_portal in visited_portals:
-                continue
-            if len(visited_nodes) > 200:
-                a = 2
-            # Avoid circle back to visited nodes
-            # if dest_node in visited_nodes:
-            #     continue
-
-            source_node.pvs.add(dest_node)
-            if dest_node in self.node_pvs[source_node]:
-                self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
-            else:
-                self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
-
-            old_penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
-            if not old_penumbra.is_valid:
-                continue
-            if source_penumbra:
-                intersection = source_penumbra.intersection(old_penumbra)
-                if isinstance(intersection, GeometryCollection):
-                    intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
-                elif isinstance(intersection, MultiPolygon):
-                     a=2
-                elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
-                    continue
-                elif not isinstance(intersection, ShapelyPolygon):
-                    continue
-                penumbra = Polygon.from_shapely(intersection)
-            else:
-                source_penumbra = old_penumbra
-                penumbra = old_penumbra
-
-            if not penumbra.is_valid:
-                continue
-
-            dest_portals = []
-            # Check all portals, except the once we are looking through
-            valid_destination_portals = set(dest_node.portals) - {target_portal}
-            a=2
-            for dest_portal in valid_destination_portals:
-                # If the destination portal is collinear to the target or source portals, then we can not see the node
-                # it leads to (at least not through the target node)
-                if dest_portal.compare(target_portal) == 'C' or dest_portal.compare(source_portal) == 'C':
-                    a=2
-                    continue
-
-                if not penumbra.intersects(dest_portal.shapely):
-                    continue
-
-                ls = dest_portal.shapely.intersection(penumbra)
-                if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
-                    continue
-
-                if ls.length< 1e-1:
-                    continue
-                dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
-                a = 2
-                dest_portals.append(dest_portal)
-
-            if len(dest_portals):
-                self._gen_pvs2(source_node, dest_node, source_portal, dest_portals,
-                              visited_nodes + [dest_node], visited_portals + [target_portal], source_penumbra)
+                self._gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals,
+                                        visited_nodes + [dest_node], visited_portals + [target_portal], penumbra)
 
     def _traverse_tree_nx(self, node, g, parent=None):
         child = g.number_of_nodes() + 1

@@ -6,6 +6,8 @@ pr = profile.Profile()
 pr.disable()
 import datetime
 import pickle
+import multiprocessing as mpp
+
 
 from utils.functions import plot_nodes, sort_fovs
 from utils.bsp import BSP
@@ -30,8 +32,10 @@ def generate_ref_point(polygons):
 
 
 def main():
+    pool = mpp.Pool(mpp.cpu_count())
     SHOW_PLANES = True
-    TARGET = "GLOBAL"
+    TARGET = "MALTA"
+    heuristic = 'min'
     LIMITS = {
         "TEST": {
             "LON_MIN": -62.,
@@ -159,8 +163,14 @@ def main():
     ylim = plt.ylim()
 
     print('Creating tree')
-    bsptree = BSP(lines, heuristic='even', bounds=(xlim, ylim))
-    pickle.dump(bsptree, open('trees/bsp_global_min.p', 'wb'))
+    now = datetime.datetime.now()
+    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
+    t1 = datetime.datetime.now() - now
+    now = datetime.datetime.now()
+    bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
+    t2 = datetime.datetime.now()-now
+    print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
+    pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))
 
     # bsptree = pickle.load(open('trees/bsp_malta_min.p', 'rb'))
 

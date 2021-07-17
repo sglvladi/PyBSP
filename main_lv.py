@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from shapely.geometry import Polygon
 
+import multiprocessing as mpp
+
 from utils.bsp import BSP
 from utils.geometry import LineSegment, Point
 from utils.functions import sort_fovs, plot_nodes
@@ -125,16 +127,18 @@ def main():
     SHOW_NORMALS = False
     ANNOTATE_LINES = True
 
+    pool = mpp.Pool(mpp.cpu_count())
+
     print('Generating line segments')
     lines, polygons = generate_polygons()
     point1 = generate_ref_point(polygons)
 
     print('Generating tree')
-    bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
+    bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)), pool=pool)
     # # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
-    pickle.dump(bsptree, open('trees/bsp_test_min.p', 'wb'))
-
-    bsptree = pickle.load(open('trees/bsp_test_min.p', 'rb'))
+    # pickle.dump(bsptree, open('trees/bsp_test_min.p', 'wb'))
+    #
+    # bsptree = pickle.load(open('trees/bsp_test_min.p', 'rb'))
 
     # bsptree.tree.data = copy(lines)
     # bsptree.generate_tree(bsptree.tree, heuristic='random')

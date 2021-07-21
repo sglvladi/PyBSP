@@ -14,19 +14,19 @@ from .geometry import LineSegment, Point, Polygon
 from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
 
-from multiprocessing import Pool, cpu_count
-import tqdm
+# from multiprocessing import Pool, cpu_count
+# import tqdm
 import random
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 
 def min_partitions(idx, line, lines):
 # def min_partitions(args):
 #     idx, line, lines = args
     partition_count = 0
-    # if len(lines) > 1000:
-    #     samples = random.sample(lines, 1000)
-    # else:
-    samples = lines
+    if len(lines) > 1000:
+        samples = random.sample(lines, 1000)
+    else:
+        samples = lines
     for idx2, line2 in enumerate(samples):
         # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
         if idx != idx2:
@@ -243,6 +243,7 @@ class BSP:
             # mins = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(min_partitions)(idx, line, lines) for idx, line in enumerate(lines))
 
             # mins = self.pool.imap_unordered(min_partitions, inputs)
+            # mins = pool.imap(min_partitions, inputs)
             mins = pool.starmap(min_partitions, inputs)
             mins_0 = [m[0] for m in mins]
             mins_1 = [m[1] for m in mins]
@@ -329,10 +330,6 @@ class BSP:
         print('Generating walls...', end='')
         self.gen_walls()
         print('Done')
-        print('Generating PVS...', end='')
-        self.gen_pvs(pool)
-        print('Done')
-        self.pool = None
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -406,7 +403,7 @@ class BSP:
         node.front = BSPNode(data_front, parent=node, polygon=pol_left, id=self._last_node_id)
         self._last_node_id += 1
         if data_front:
-            self._generate_tree(node.front, heuristic)
+            self._generate_tree(node.front, heuristic, pool=pool)
 
         # Generate back node
         if not len(data_back):
@@ -414,7 +411,7 @@ class BSP:
         node.back = BSPNode(data_back, parent=node, polygon=pol_right, id=self._last_node_id)
         self._last_node_id += 1
         if data_back:
-            self._generate_tree(node.back, heuristic)
+            self._generate_tree(node.back, heuristic, pool=pool)
 
     def gen_portals(self):
         self._portals = []

@@ -218,7 +218,7 @@ def main():
     # plt.pause(0.1)
 
     node = bsptree.get_node(18)
-    pvs = node.pvs
+    pvs = [n for n in bsptree.nodes if n.id in node.pvs]
     wall_pvs = node.wall_pvs
     art = plot_nodes(pvs)
     pol = node.polygon
@@ -270,14 +270,14 @@ def main():
     # pr.disable()
     # print("[INFO]: Dumping Profiler stats")
     # pr.dump_stats('profile_{}.pstat'.format(1))
-    n1 = bsptree.get_node(3)
-    n2 = bsptree.get_node(8)
-
-    path_lens = [len(p) for p in bsptree.node_pvs[n1][n2]]
-    path_idx = np.argmax(path_lens)
-    path = bsptree.node_pvs[n1][n2][path_idx]
-
-    bsptree.sim_pvs(path)
+    # n1 = bsptree.get_node(3)
+    # n2 = bsptree.get_node(8)
+    #
+    # path_lens = [len(p) for p in bsptree.node_pvs[n1][n2]]
+    # path_idx = np.argmax(path_lens)
+    # path = bsptree.node_pvs[n1][n2][path_idx]
+    #
+    # bsptree.sim_pvs(path)
 
     connected_nodes = dict()
     for node1 in bsptree.empty_leaves:
@@ -307,7 +307,7 @@ def main():
 
     fovs = sort_fovs(fovs)
     for fov in fovs:
-        color = np.random.rand(1, 3)
+        color = np.random.rand(3)
         fov.plot(ax=ax, fc=color)
         plt.pause(0.01)
     # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())

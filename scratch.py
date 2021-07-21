@@ -36,6 +36,7 @@ def main():
     SHOW_PLANES = True
     TARGET = "MALTA"
     heuristic = 'min'
+
     LIMITS = {
         "TEST": {
             "LON_MIN": -62.,
@@ -162,15 +163,19 @@ def main():
     xlim = plt.xlim()
     ylim = plt.ylim()
 
-    print('Creating tree')
+    # print('Creating tree')
+    # now = datetime.datetime.now()
+    # bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
+    # t1 = datetime.datetime.now() - now
     now = datetime.datetime.now()
-    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
-    t1 = datetime.datetime.now() - now
-    now = datetime.datetime.now()
-    bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
-    t2 = datetime.datetime.now()-now
-    print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
-    pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))
+    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
+    pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
+    print('Generating PVS...', end='')
+    bsptree.gen_pvs(pool)
+    print('Done')
+    # t2 = datetime.datetime.now()-now
+    # print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
+    # pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))
 
     # bsptree = pickle.load(open('trees/bsp_malta_min.p', 'rb'))
 

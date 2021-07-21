@@ -15,7 +15,7 @@ from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
 
 # from multiprocessing import Pool, cpu_count
-# import tqdm
+import tqdm
 import random
 # from joblib import Parallel, delayed
 
@@ -33,7 +33,7 @@ def min_partitions(idx, line, lines):
             res = line.compare(line2)
             if res == 'P':
                 partition_count += 1
-    print('Done {}'.format(idx))
+    # print('Done {}'.format(idx))
     return idx, partition_count
 
 class BSPNode:
@@ -244,7 +244,7 @@ class BSP:
 
             # mins = self.pool.imap_unordered(min_partitions, inputs)
             # mins = pool.imap(min_partitions, inputs)
-            mins = pool.starmap(min_partitions, inputs)
+            mins = pool.starmap(min_partitions, tqdm.tqdm(inputs, total=len(inputs)))
             mins_0 = [m[0] for m in mins]
             mins_1 = [m[1] for m in mins]
             min_idx_tmp = np.argmin(mins_1)
@@ -417,7 +417,7 @@ class BSP:
         self._portals = []
         self._removed_portals = set()
         self._replacement_portals = dict()
-        for node in self.nodes:
+        for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.portals = self._update_portals(node.portals)
             #
@@ -453,16 +453,16 @@ class BSP:
                     node.front.portals.append(p)
                     node.back.portals.append(p)
 
-        for node in self.empty_leaves:
+        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
             node.portals = self._update_portals(node.portals)
 
         self.portal_connections= dict()
-        for portal in self._portals:
+        for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
             nodes = [n for n in self.empty_leaves if portal in n.portals]
             self.portal_connections[portal] = nodes
 
         self.node_connectivity = dict()
-        for node in self.empty_leaves:
+        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
             self.node_connectivity[node] = dict()
             for portal in node.portals:
                 self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
@@ -480,7 +480,7 @@ class BSP:
     def gen_walls(self):
         self._replacement_portals = dict()
         self._walls = []
-        for node in self.nodes:
+        for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.walls = self._update_walls(node.walls)
             if node.is_solid:
@@ -512,10 +512,10 @@ class BSP:
                     node.front.walls.append(p)
                     node.back.walls.append(p)
 
-        for node in self.empty_leaves:
+        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
             node.walls = self._update_walls(node.walls)
 
-        for node in self.empty_leaves:
+        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
             portal_names = [p.name for p in self._portals]
             node.walls = [p for p in node.walls if p.name not in portal_names]
 
@@ -558,7 +558,7 @@ class BSP:
         if pool:
             inputs = [(self, source_node) for source_node in self.empty_leaves]
 
-            nodes = pool.starmap(BSP._gen_pvs, inputs)
+            nodes = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
             for node in nodes:
                 e_node = next(n for n in self.empty_leaves if n==node)
                 e_node.pvs = node.pvs

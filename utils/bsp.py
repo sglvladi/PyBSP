@@ -575,13 +575,10 @@ class BSP:
                                 parts_0 = lines[0].name.split('_')
                                 parts_1 = lines[1].name.split('_')
                                 nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
-                                a = 2
                                 break
                             else:
                                 current_dict = current_dict[parts[it]]
                                 it += 1
-                                a = 2
-                        a = 2
                     else:
                         parts_0 = lines[0].name.split('_')
                         parts_1 = lines[1].name.split('_')
@@ -706,7 +703,6 @@ class BSP:
                 source_node.pvs = set()
                 self.node_pvs[source_node.id] = dict()
                 source_node.wall_pvs = set(source_node.walls)
-                a=2
                 for source_portal_name in source_node.portals:
                     source_portal = self.get_portal(source_portal_name)
                     target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
@@ -777,7 +773,6 @@ class BSP:
                 elif isinstance(intersection, MultiPolygon):
                     # TODO: Need to handle this!!!!
                     continue
-                     # a=2
                 elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
                     continue
                 elif not isinstance(intersection, ShapelyPolygon):
@@ -790,12 +785,10 @@ class BSP:
             # Check all portals, except the one we are looking through
             p_names = set(dest_node.portals) - {target_portal.name}
             valid_destination_portals = set([self.get_portal(p_name) for p_name in p_names]) - {target_portal}
-            a=2
             for dest_portal in valid_destination_portals:
                 # If the destination portal is collinear to the target or source portals, then we can not see the node
                 # it leads to (at least not through the target node)
                 if dest_portal.compare(target_portal) == 'C' or dest_portal.compare(source_portal) == 'C':
-                    a=2
                     continue
 
                 if not penumbra.shapely.intersects(dest_portal.shapely):
@@ -964,7 +957,6 @@ class BSP:
                     if len(fov) == 1 and fov[0].delta == np.pi:
                         break
                 else:
-                    a=2
                     continue
 
         merged = merge_lines(vis_lines)

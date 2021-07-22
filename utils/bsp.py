@@ -19,38 +19,7 @@ import tqdm
 import random
 # from joblib import Parallel, delayed
 
-def min_partitions(idx, line, lines):
-# def min_partitions(args):
-#     idx, line, lines = args
-    partition_count = 0
-    if len(lines) > 1000:
-        samples = random.sample(lines, 1000)
-    else:
-        samples = lines
-    for idx2, line2 in enumerate(samples):
-        # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
-        if idx != idx2:
-            res = line.compare(line2)
-            if res == 'P':
-                partition_count += 1
-    # print('Done {}'.format(idx))
-    return idx, partition_count
-
-
-def _update_portals(obj, node):
-    return node, obj._update_portals(node.portals)
-
-
-def _process_portal_connections(portal, empty_leaves):
-    return portal, [n for n in empty_leaves if portal in n.portals]
-
-
-def _process_node_connectivity(node, portal_connections):
-    node_connectivity = dict()
-    for portal in node.portals:
-        node_connectivity[portal] = next(n for n in portal_connections[portal] if n != node)
-    return node, node_connectivity
-
+from collections.abc import Mapping
 
 class BSPNode:
     """BSP Node class"""
@@ -80,72 +49,29 @@ class BSPNode:
     def __hash__(self):
         return hash(self.id)
 
-    # def __getstate__(self):
-    #     attributes = self.__dict__.copy()
-    #     attributes['pvs'] = tuple(self.pvs)
-    #     return attributes
-    #
-    # def __setstate__(self, state):
-    #     # state['pvs'] = set(state['pvs'])
-    #     self.__dict__.update(state)
-    #     self.pvs = set()
-    #     for node in state['pvs']:
-    #         a=2
-
-
-    @property
-    def is_leaf(self):
-        return self.front is None and self.back is None
-
-    @property
-    def is_root(self):
-        return self.parent is None
-
-    @property
-    def is_solid(self):
-        if self.is_leaf and self == self.parent.back:
-            return True
-        return False
-
-    @property
-    def is_empty(self):
-        if self.is_leaf and self == self.parent.front:
-            return True
-        return False
-
-    @property
-    def leaf_children(self):
-        nodes = []
-        if self.front is not None and self.front.is_leaf:
-            nodes.append(self.front)
-        elif self.front is not None:
-            nodes += self.front.leaf_children
-
-        if self.back is not None and self.back.is_leaf:
-            nodes.append(self.back)
-        elif self.back is not None:
-            nodes += self.back.leaf_children
-        return nodes
-
-
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
     def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), pool=None):
         """Constructor, initializes binary tree"""
-        self.root = BSPNode()
         self.heuristic = heuristic
         self.bounds = bounds
-        self._portals = []
-
-        self._last_node_id = 0
-        self.node_connectivity = None
+        self.node_connectivity: Mapping[int, Mapping[str, int]] = dict()
         self.portal_connections = None
         self.node_pvs = dict()
         self.wall_pvs = dict()
+
+        self._walls = []
+        self._portals = []
+        self._nodes = []
+        self._nodes_sorted = False
+
         if lines:
             self.generate_tree(lines, pool=pool)
 
+    @property
+    def root(self) -> [BSPNode]:
+        return self.nodes[0]
 
     @property
     def nodes(self) -> [BSPNode]:
@@ -157,16 +83,35 @@ class BSP:
         list of BSPNode objects
 
         """
-        nodes = self._nodes(self.root)
+        nodes = self._nodes
         return nodes
 
-    def _nodes(self, node):
-        nodes = [node]
-        if node.back is not None:
-            nodes += self._nodes(node.back)
-        if node.front is not None:
-            nodes += self._nodes(node.front)
-        return nodes
+    def get_node(self, id) -> [BSPNode]:
+        if self._nodes_sorted:
+            return self.nodes[id]
+        return next(filter(lambda node: node.id == id, self.nodes), None)
+
+    def get_portal(self, name):
+        return next(filter(lambda portal: portal.name == name, self._portals), None)
+
+    def get_wall(self, name):
+        return next(filter(lambda wall: wall.name == name, self._walls), None)
+
+    def is_leaf(self, node):
+        return node.front is None and node.back is None
+
+    def is_root(self, node):
+        return node.parent is None
+
+    def is_solid(self, node):
+        if self.is_leaf(node) and node.id == self.get_node(node.parent).back:
+            return True
+        return False
+
+    def is_empty(self, node):
+        if self.is_leaf(node) and node.id == self.get_node(node.parent).front:
+            return True
+        return False
 
     @property
     def solid_leaves(self) -> [BSPNode]:
@@ -178,7 +123,7 @@ class BSP:
         list of BSPNode objects
 
         """
-        return [n for n in self.nodes if n.is_solid]
+        return [n for n in self.nodes if self.is_solid(n)]
 
     @property
     def empty_leaves(self) -> [BSPNode]:
@@ -190,7 +135,7 @@ class BSP:
         list of BSPNode objects
 
         """
-        return [n for n in self.nodes if n.is_empty]
+        return [n for n in self.nodes if self.is_empty(n)]
 
     @property
     def num_nodes(self) -> int:
@@ -220,10 +165,10 @@ class BSP:
         depth = 1
         depth_left = 0
         if node.front is not None:
-            depth_left = self._depth(node.front)
+            depth_left = self._depth(self.nodes[node.front])
         depth_right = 0
         if node.back is not None:
-            depth_right = self._depth(node.back)
+            depth_right = self._depth(self.nodes[node.back])
         return depth + np.amax([depth_left, depth_right])
 
     @property
@@ -238,9 +183,6 @@ class BSP:
         """
         g = nx.Graph()
         return self._traverse_tree_nx(self.root, g)
-
-    def get_node(self, id):
-        return next(filter(lambda node: node.id == id, self.nodes), None)
 
     def heuristic_min_partition(self, lines, pool=None) -> int:
         """
@@ -267,7 +209,7 @@ class BSP:
             min_idx = mins_0[min_idx_tmp]
         else:
             min_partition = np.inf
-            for idx1, line1 in enumerate(lines):
+            for idx1, line1 in enumerate(tqdm.tqdm(lines)):
                 partition_count = 0
                 for idx2, line2 in enumerate(lines):
                     # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
@@ -280,7 +222,7 @@ class BSP:
                     min_partition = partition_count
                     min_idx = idx1
 
-                print('Done {}'.format(idx1))
+                # print('Done {}'.format(idx1))
 
         return min_idx
 
@@ -336,12 +278,14 @@ class BSP:
             self.heuristic = heuristic
         polygon = Polygon(((self.bounds[0][0], self.bounds[1][0]), (self.bounds[0][0], self.bounds[1][1]),
                            (self.bounds[0][1], self.bounds[1][1]), (self.bounds[0][1], self.bounds[1][0])))
-        self._last_node_id = 0
-        self.root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
+        self._last_node_id = len(self.nodes)
+        root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
+        self.nodes.append(root)
         self._last_node_id += 1
         print('\nGenerating tree...')
-        self._generate_tree(self.root, self.heuristic, pool)
-
+        self._generate_tree(root, self.heuristic, pool)
+        self._nodes.sort(key=lambda x: x.id)
+        self._nodes_sorted = True
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -353,7 +297,7 @@ class BSP:
         elif heuristic == 'random':
             best_idx = np.random.randint(len(node.data))
 
-        print('....')
+        # print('....')
         data = []
         data_front = []
         data_back = []
@@ -412,20 +356,22 @@ class BSP:
         node.data = data
         if not len(data_front):
             data_front = None
-        node.front = BSPNode(data_front, parent=node, polygon=pol_left, id=self._last_node_id)
-        self._last_node_id += 1
+        node_front = BSPNode(data_front, parent=node.id, polygon=pol_left, id=len(self._nodes))
+        self._nodes.append(node_front)
+        node.front = node_front.id
         if data_front:
-            self._generate_tree(node.front, heuristic, pool=pool)
+            self._generate_tree(node_front, heuristic, pool=pool)
 
         # Generate back node
         if not len(data_back):
             data_back = None
-        node.back = BSPNode(data_back, parent=node, polygon=pol_right, id=self._last_node_id)
-        self._last_node_id += 1
+        node_back = BSPNode(data_back, parent=node.id, polygon=pol_right, id=len(self._nodes))
+        self._nodes.append(node_back)
+        node.back = node_back.id
         if data_back:
-            self._generate_tree(node.back, heuristic, pool=pool)
+            self._generate_tree(node_back, heuristic, pool=pool)
 
-    def gen_portals(self, pool=None):
+    def gen_portals(self, pool=None, chunk_size=50):
         self._portals = []
         self._removed_portals = set()
         self._replacement_portals = dict()
@@ -435,141 +381,229 @@ class BSP:
             # update node portals in case replacement or removal has occurred
             node.portals = self._update_portals(node.portals)
             #
-            if node.is_solid:
-                self._removed_portals |= {p.name for p in node.portals}
+            if self.is_solid(node):
+                self._removed_portals |= {p for p in node.portals}
                 self._portals = [p for p in self._portals if p.name not in self._removed_portals]
                 node.portals = []
                 continue
-            elif node.is_empty:
+            elif self.is_empty(node):
                 continue
             portal = node.plane
-            node.portals.append(portal)
             self._portals.append(portal)
+            node.portals.append(portal.name)
             # Push down
-            for p in node.portals:
+            for p_name in node.portals:
+                p = self.get_portal(p_name)
                 res = node.plane.compare(p)
                 if res == 'F':
-                    node.front.portals.append(p)
+                    self.nodes[node.front].portals.append(p.name)
                 elif res == 'B':
-                    node.back.portals.append(p)
+                    self.nodes[node.back].portals.append(p.name)
                 elif res == 'P':
                     lines = node.plane.split(p)
                     if node.plane.compare(lines[0]) == 'F':
-                        node.front.portals.append(lines[0])
-                        node.back.portals.append(lines[1])
+                        self.nodes[node.front].portals.append(lines[0].name)
+                        self.nodes[node.back].portals.append(lines[1].name)
                     else:
-                        node.back.portals.append(lines[0])
-                        node.front.portals.append(lines[1])
+                        self.nodes[node.back].portals.append(lines[0].name)
+                        self.nodes[node.front].portals.append(lines[1].name)
                     self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
                     self._portals.remove(p)
                     self._portals += lines
                 elif res == 'C':
-                    node.front.portals.append(p)
-                    node.back.portals.append(p)
+                    self.nodes[node.front].portals.append(p.name)
+                    self.nodes[node.back].portals.append(p.name)
 
         # node_portals = dict()
         # for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
         #     node_portals[node] = self._update_portals(node.portals)
 
         if pool:
-            inputs = [(self, node) for node in empty_leaves]
-            updated_portals = pool.starmap(_update_portals, tqdm.tqdm(inputs, total=len(inputs)))
+            # Step 1 - Update portals
+            node_ids = [node.id for node in empty_leaves]
+            chunks = get_chunks(node_ids, chunk_size)
+            inputs = [(self, chunk) for chunk in chunks]
+            updated_portals_chunks = pool.starmap(update_portals, tqdm.tqdm(inputs, total=len(inputs)))
+            updated_portals = [item for sublist in updated_portals_chunks for item in sublist]
             updated_portals = {item[0]: item[1] for item in updated_portals}
             for node in empty_leaves:
-                node.portals = updated_portals[node]
+                node.portals = updated_portals[node.id]
+
+            # Step 2 - Generate connectivity look-up tables
+            portal_names = [portal.name for portal in self._portals]
+            chunks = get_chunks(portal_names, chunk_size)
+            inputs = [(chunk, empty_leaves) for chunk in chunks]
+            portal_connections_chunks = pool.starmap(process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
+            portal_connections_list = [item for sublist in portal_connections_chunks for item in sublist]
+            self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
+            self.node_connectivity = {node.id: dict() for node in empty_leaves}
+            for item in portal_connections_list:
+                portal = item[0]
+                nodes = item[1]
+                self.node_connectivity[nodes[0]][portal] = nodes[1]
+                self.node_connectivity[nodes[1]][portal] = nodes[0]
         else:
+            # Step 1 - Update portals
             for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
                 node.portals = self._update_portals(node.portals)
 
-        if pool:
-            inputs = [(portal, empty_leaves) for portal in self._portals]
-            portal_connections_list = pool.starmap(_process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
-            self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
-        else:
+            # Step 2 - Generate connectivity look-up tables
             self.portal_connections = dict()
-            # self.node_connectivity = {node: dict() for node in empty_leaves}
+            self.node_connectivity = {node.id: dict() for node in empty_leaves}
             for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
-                nodes = [n for n in empty_leaves if portal in n.portals]
-                self.portal_connections[portal] = nodes
-                # self.node_connectivity[nodes[0]][portal] = nodes[1]
-                # self.node_connectivity[nodes[1]][portal] = nodes[0]
+                nodes = [n.id for n in empty_leaves if portal.name in n.portals]
+                self.portal_connections[portal.name] = nodes
+                self.node_connectivity[nodes[0]][portal.name] = nodes[1]
+                self.node_connectivity[nodes[1]][portal.name] = nodes[0]
 
-        if pool:
-            inputs = [(node, {portal: self.portal_connections[portal] for portal in node.portals}) for node in empty_leaves]
-            node_connectivity = pool.starmap(_process_node_connectivity, tqdm.tqdm(inputs, total=len(inputs)))
-            self.node_connectivity = {item[0]: item[1] for item in node_connectivity}
-        else:
-            self.node_connectivity = dict()
-            for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
-                self.node_connectivity[node] = dict()
-                self.node_connectivity[node] = {portal: next(n for n in self.portal_connections[portal] if n != node)
-                                                for portal in node.portals}
-                for portal in node.portals:
-                    self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
+        # if pool:
+        #     portal_names = [portal.name for portal in self._portals]
+        #     chunks = get_chunks(portal_names, chunk_size)
+        #     inputs = [(chunk, empty_leaves) for chunk in chunks]
+        #     portal_connections_chunks = pool.starmap(process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
+        #     portal_connections_list = [item for sublist in portal_connections_chunks for item in sublist]
+        #     self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
+        #     self.node_connectivity = {node.id: dict() for node in empty_leaves}
+        #     for item in portal_connections_list:
+        #         portal = item[0]
+        #         nodes = item[1]
+        #         self.node_connectivity[nodes[0]][portal] = nodes[1]
+        #         self.node_connectivity[nodes[1]][portal] = nodes[0]
+        # else:
+        #     self.portal_connections = dict()
+        #     self.node_connectivity = {node.id: dict() for node in empty_leaves}
+        #     for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
+        #         nodes = [n.id for n in empty_leaves if portal.name in n.portals]
+        #         self.portal_connections[portal.name] = nodes
+        #         self.node_connectivity[nodes[0]][portal.name] = nodes[1]
+        #         self.node_connectivity[nodes[1]][portal.name] = nodes[0]
 
-
+        # if pool:
+        #     inputs = [(node, {portal: self.portal_connections[portal] for portal in node.portals}) for node in empty_leaves]
+        #     node_connectivity = pool.starmap(process_node_connectivity, tqdm.tqdm(inputs, total=len(inputs)))
+        #     self.node_connectivity = {item[0]: item[1] for item in node_connectivity}
+        # else:
+        #     self.node_connectivity = dict()
+        #     for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
+        #         self.node_connectivity[node.id] = {portal: next(n for n in self.portal_connections[portal]
+        #                                                         if n != node.id)
+        #                                            for portal in node.portals}
+        #         # self.node_connectivity[node.id] = dict()
+        #         # for portal in node.portals:
+        #         #     self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
 
     def _update_portals(self, portals):
-        portal_names = [p.name for p in portals]
+        portal_names = [p for p in portals]
         processed_portals = set()
         while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
             for portal_name in portal_names:
                 if portal_name in self._replacement_portals.keys()-processed_portals:
                     portal_names += set(self._replacement_portals[portal_name])
                     processed_portals.add(portal_name)
-        return [p for p in self._portals if p.name in set(portal_names)-processed_portals]
+        return [p.name for p in self._portals if p.name in set(portal_names)-processed_portals]
 
-    def gen_walls(self):
+    def gen_walls(self, pool=None, chunk_size=50):
         self._replacement_portals = dict()
         self._walls = []
         for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.walls = self._update_walls(node.walls)
-            if node.is_solid:
-                continue
-            elif node.is_empty:
+            if self.is_solid(node) or self.is_empty(node):
                 continue
             portal = node.plane
-            node.walls.append(portal)
             self._walls.append(portal)
+            node.walls.append(portal.name)
             # Push down
-            for p in node.walls:
+            for p_name in node.walls:
+                p = self.get_wall(p_name)
                 res = node.plane.compare(p)
                 if res == 'F':
-                    node.front.walls.append(p)
+                    self.nodes[node.front].walls.append(p.name)
                 elif res == 'B':
-                    node.back.walls.append(p)
+                    self.nodes[node.back].walls.append(p.name)
                 elif res == 'P':
                     lines = node.plane.split(p)
                     if node.plane.compare(lines[0]) == 'F':
-                        node.front.walls.append(lines[0])
-                        node.back.walls.append(lines[1])
+                        self.nodes[node.front].walls.append(lines[0].name)
+                        self.nodes[node.back].walls.append(lines[1].name)
                     else:
-                        node.back.walls.append(lines[0])
-                        node.front.walls.append(lines[1])
+                        self.nodes[node.back].walls.append(lines[0].name)
+                        self.nodes[node.front].walls.append(lines[1].name)
                     self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
                     self._walls.remove(p)
                     self._walls += lines
                 elif res == 'C':
-                    node.front.walls.append(p)
-                    node.back.walls.append(p)
+                    self.nodes[node.front].walls.append(p.name)
+                    self.nodes[node.back].walls.append(p.name)
 
-        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-            node.walls = self._update_walls(node.walls)
+        empty_leaves = self.empty_leaves
 
-        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+
+        # updated_walls_1 = dict()
+        # for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+        #     updated_walls_1[node.id] = self._update_walls(node.walls)
+
+        if pool:
+            # Step 1 - Update walls
+            node_ids = [node.id for node in empty_leaves]
+            chunks = get_chunks(node_ids, chunk_size)
+            inputs = [(self, chunk) for chunk in chunks]
+            updated_walls_chunks = pool.starmap(update_walls, tqdm.tqdm(inputs, total=len(inputs)))
+            updated_walls = [item for sublist in updated_walls_chunks for item in sublist]
+            updated_walls = {item[0]: item[1] for item in updated_walls}
+            for node in empty_leaves:
+                node.walls = updated_walls[node.id]
+
+            # Step 2 - Remove portals
             portal_names = [p.name for p in self._portals]
-            node.walls = [p for p in node.walls if p.name not in portal_names]
+            self._walls = [w for w in self._walls if w.name not in portal_names]
+            inputs = [(self, chunk) for chunk in chunks]
+            corrected_walls_chunks = pool.starmap(correct_walls, tqdm.tqdm(inputs, total=len(inputs)))
+            corrected_walls = [item for sublist in corrected_walls_chunks for item in sublist]
+            corrected_walls = {item[0]: item[1] for item in corrected_walls}
+            for node in empty_leaves:
+                node.walls = corrected_walls[node.id]
+        else:
+            # Step 1 - Update walls
+            for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+                node.walls = self._update_walls(node.walls)
+
+            # Step 2 - Remove portals
+            portal_names = [p.name for p in self._portals]
+            self._walls = [w for w in self._walls if w.name not in portal_names]
+            wall_names = [w.name for w in self._walls]
+            for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+                # node.walls = [p for p in node.walls if p not in portal_names]
+                node.walls = [w for w in node.walls if w in wall_names]
+
+        # corrected_walls_1 = dict()
+        # wall_names = [w.name for w in self._walls]
+        # for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+        #     # node.walls = [p for p in node.walls if p not in portal_names]
+        #     corrected_walls_1[node.id] = [w for w in node.walls if w in wall_names]
+
+        # if pool:
+        #     inputs = [(self, chunk) for chunk in chunks]
+        #     corrected_walls_chunks = pool.starmap(correct_walls, tqdm.tqdm(inputs, total=len(inputs)))
+        #     corrected_walls = [item for sublist in corrected_walls_chunks for item in sublist]
+        #     corrected_walls = {item[0]: item[1] for item in corrected_walls}
+        #     for node in empty_leaves:
+        #         node.walls = corrected_walls[node.id]
+        # else:
+        #     wall_names = [w.name for w in self._walls]
+        #     for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
+        #         # node.walls = [p for p in node.walls if p not in portal_names]
+        #         node.walls = [w for w in node.walls if w in wall_names]
 
     def _update_walls(self, portals):
-        portal_names = [p.name for p in portals]
+        portal_names = [p for p in portals]
         processed_portals = set()
         while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
             for portal_name in portal_names:
                 if portal_name in self._replacement_portals.keys()-processed_portals:
                     portal_names += set(self._replacement_portals[portal_name])
                     processed_portals.add(portal_name)
-        return [p for p in self._walls if p.name in set(portal_names)-processed_portals]
+        return [p.name for p in self._walls if p.name in set(portal_names)-processed_portals]
 
     def sim_pvs(self, path):
         penumbras = []
@@ -598,50 +632,52 @@ class BSP:
     def gen_pvs(self, pool=None):
         self.node_pvs = dict()
         if pool:
-            inputs = [(self, source_node) for source_node in self.empty_leaves]
+            inputs = [(self, source_node.id) for source_node in self.empty_leaves]
 
-            nodes = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
-            for node in nodes:
-                e_node = next(n for n in self.empty_leaves if n==node)
-                e_node.pvs = node.pvs
-                e_node.wall_pvs = node.wall_pvs
-            a=2
+            results = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
+            for res in tqdm.tqdm(results):
+                source_node = self.nodes[res[0]]
+                source_node.pvs = res[1]
+                source_node.wall_pvs = res[2]
         else:
-            for source_node in self.empty_leaves:
+            for source_node in tqdm.tqdm(self.empty_leaves):
                 source_node.pvs = set()
-                self.node_pvs[source_node] = dict()
+                self.node_pvs[source_node.id] = dict()
                 source_node.wall_pvs = set(source_node.walls)
                 a=2
-                for source_portal in source_node.portals:
-                    target_node = self.node_connectivity[source_node][source_portal]
-                    source_node.pvs.add(target_node)
+                for source_portal_name in source_node.portals:
+                    source_portal = self.get_portal(source_portal_name)
+                    target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
+                    source_node.pvs.add(target_node.id)
                     source_node.wall_pvs |= set(target_node.walls)
-                    target_portals = target_node.portals
+                    target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
                     self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
-                                            [source_node, target_node], [source_portal])
-                source_node.pvs = list(source_node.pvs)
+                                            [source_node.id, target_node.id], [source_portal])
+                # source_node.pvs = list(source_node.pvs)
                 # source_node.wall_pvs = list(source_node.wall_pvs)
 
-    def _gen_pvs(self, source_node):
+    def _gen_pvs(self, source_node_id):
+        source_node = self.nodes[source_node_id]
         source_node.pvs = set()
         self.node_pvs[source_node] = dict()
         source_node.wall_pvs = set(source_node.walls)
         a = 2
-        for source_portal in source_node.portals:
-            target_node = self.node_connectivity[source_node][source_portal]
-            source_node.pvs.add(target_node)
+        for source_portal_name in source_node.portals:
+            source_portal = self.get_portal(source_portal_name)
+            target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
+            source_node.pvs.add(target_node.id)
             source_node.wall_pvs |= set(target_node.walls)
-            target_portals = target_node.portals
-            self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals, [source_node, target_node],
-                                    [source_portal])
+            target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
+            self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
+                                    [source_node.id, target_node.id], [source_portal])
         # source_node.pvs = list(source_node.pvs)
-        source_node.pvs = [n.id for n in source_node.pvs]
-        return source_node
+        # source_node.pvs = [n.id for n in source_node.pvs]
+        return source_node_id, source_node.pvs, source_node.wall_pvs
 
     def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals: list,
-                           visited_nodes: list, visited_portals: list, last_penumbra=None):
+                           visited_node_ids: list, visited_portals: list, last_penumbra=None):
         target_portals = copy(target_portals)
-        visited_nodes = copy(visited_nodes)
+        visited_node_ids = copy(visited_node_ids)
         visited_portals = copy(visited_portals)
 
         # Check all portals except the one we are looking through
@@ -651,7 +687,7 @@ class BSP:
             if source_portal.compare(target_portal) == 'C':
                 a = 2
                 continue
-            dest_node = self.node_connectivity[current_node][target_portal]
+            dest_node = self.nodes[self.node_connectivity[current_node.id][target_portal.name]]
 
             # Avoid circle back to visited nodes
             # if len(visited_nodes>200):
@@ -659,13 +695,14 @@ class BSP:
             # if dest_node == source_node or target_portal in visited_portals:
             #     continue
 
-            source_node.pvs.add(dest_node)
+            source_node.pvs.add(dest_node.id)
             source_node.wall_pvs |= set(dest_node.walls)
-            if dest_node in self.node_pvs[source_node]:
-                self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
-            else:
-                self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
+            # if dest_node.id in self.node_pvs[source_node]:
+            #     self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
+            # else:
+            #     self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
 
+            # visited_portals = [self.get_portal(p_name) for p_name in visited_portal_names]
             penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
             if not penumbra.shapely.is_valid:
                 continue
@@ -674,7 +711,9 @@ class BSP:
                 if isinstance(intersection, GeometryCollection):
                     intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
                 elif isinstance(intersection, MultiPolygon):
-                     a=2
+                    # TODO: Need to handle this!!!!
+                    continue
+                     # a=2
                 elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
                     continue
                 elif not isinstance(intersection, ShapelyPolygon):
@@ -684,8 +723,9 @@ class BSP:
                 continue
 
             dest_portals = []
-            # Check all portals, except the once we are looking through
-            valid_destination_portals = set(dest_node.portals) - {target_portal}
+            # Check all portals, except the one we are looking through
+            p_names = set(dest_node.portals) - {target_portal.name}
+            valid_destination_portals = set([self.get_portal(p_name) for p_name in p_names]) - {target_portal}
             a=2
             for dest_portal in valid_destination_portals:
                 # If the destination portal is collinear to the target or source portals, then we can not see the node
@@ -709,24 +749,24 @@ class BSP:
 
             if len(dest_portals):
                 self._gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals,
-                                        visited_nodes + [dest_node], visited_portals + [target_portal], penumbra)
+                                        visited_node_ids + [dest_node.id], visited_portals + [target_portal], penumbra)
 
     def _traverse_tree_nx(self, node, g, parent=None):
         child = g.number_of_nodes() + 1
         id = node.id
         data = node.data
         polygon = node.polygon
-        leaf = node.is_leaf
-        solid = node.is_solid
-        empty = node.is_empty
+        leaf = self.is_leaf(node)
+        solid = self.is_solid(node)
+        empty = self.is_empty(node)
         if polygon is not None:
             g.add_node(child, data=data, leaf=leaf, polygon=polygon, solid=solid, empty=empty, id=id)
             if parent:
                 g.add_edge(parent, child)
             if node.front is not None:
-                g = self._traverse_tree_nx(node.front, g, child)
+                g = self._traverse_tree_nx(self.get_node(node.front), g, child)
             if node.back is not None:
-                g = self._traverse_tree_nx(node.back, g, child)
+                g = self._traverse_tree_nx(self.get_node(node.back), g, child)
         return g
 
     def draw_nx(self, ax=None, show_labels=True):
@@ -813,30 +853,32 @@ class BSP:
         node = self.root
         while True:
             plane = node.plane
+            node_front = self.nodes[node.front]
+            node_back = self.nodes[node.back]
             if p.compare(plane) > 0:
-                if node.front.is_leaf:
-                    return node.front
-                node = node.front
+                if self.is_leaf(node_front):
+                    return node_front
+                node = node_front
             elif p.compare(plane) < 0:
-                if node.back.is_leaf:
-                    return node.back
-                node = node.back
+                if self.is_leaf(node_back):
+                    return node_back
+                node = node_back
             else:
-                if node.front.is_empty:
-                    return node.front
-                if node.back.is_empty:
-                    return node.back
-                return node.front
+                if self.is_empty(node_front):
+                    return node_front
+                if self.is_empty(node_back):
+                    return node_back
+                return node_front
 
-    def render(self, ref_point, ax=None, use_pvs=True):
+    def render(self, ref_point, ax=None, use_pvs=False):
         # Find the leaf node
         leaf = self.find_leaf(ref_point)
 
         r_lines = [] # self._render_child2(leaf, ref_point)
-        parent = leaf.parent
+        parent = self.nodes[leaf.parent]
 
         p_lines = []
-        if not leaf.is_root:
+        if not self.is_root(leaf):
             p_lines = self._render_parent(parent, leaf, ref_point)
 
         l = r_lines + p_lines
@@ -868,22 +910,22 @@ class BSP:
         a = parent.data[0].name
         r_lines = parent.data
 
-        if parent.front == child:
-            if parent.back:
+        if self.nodes[parent.front] == child:
+            if parent.back is not None and self.nodes[parent.back]:
                 if p.compare(parent.data[0]) > 0:
-                    r_lines = r_lines + self._render_child(parent.back, p)
+                    r_lines = r_lines + self._render_child(self.nodes[parent.back], p)
                 else:
-                    r_lines = self._render_child(parent.back, p) + r_lines
+                    r_lines = self._render_child(self.nodes[parent.back], p) + r_lines
         else:
-            if parent.front:
+            if parent.front is not None and self.nodes[parent.front]:
                 if p.compare(parent.data[0]) > 0:
-                    r_lines = self._render_child(parent.front, p) + r_lines
+                    r_lines = self._render_child(self.nodes[parent.front], p) + r_lines
                 else:
-                    r_lines = r_lines + self._render_child(parent.front, p)
+                    r_lines = r_lines + self._render_child(self.nodes[parent.front], p)
 
         p_lines = []
-        if not parent.is_root:
-            p_lines = self._render_parent(parent.parent, parent, p)
+        if not self.is_root(parent):
+            p_lines = self._render_parent(self.nodes[parent.parent], parent, p)
 
         r_lines = r_lines + p_lines
         return r_lines
@@ -891,16 +933,16 @@ class BSP:
     def _render_child(self, child, p):
         a = child.data[0].name
         r_lines = child.data
-        if child.is_leaf:
+        if self.is_leaf(child):
             return r_lines
         else:
             r_lines_left = []
             r_lines_right = []
 
-            if child.front:
-                r_lines_left = self._render_child(child.front, p)
-            if child.back:
-                r_lines_right = self._render_child(child.back, p)
+            if child.front is not None and self.nodes[child.front]:
+                r_lines_left = self._render_child(self.nodes[child.front], p)
+            if child.back is not None and self.nodes[child.back]:
+                r_lines_right = self._render_child(self.nodes[child.back], p)
 
             if p.compare(child.data[0]) > 0:
                 # if point is in front of dividing plane
@@ -917,11 +959,14 @@ class BSP:
         return artists
 
 
+# //////////////////////////////////////////////////////////////////////
+
 def cut_polygon_by_line(polygon, line):
     merged = linemerge([polygon.shapely.boundary, line])
     borders = unary_union(merged)
     polygons = polygonize(borders)
     return list(polygons)
+
 
 def compute_anti_penumbra2(source, target):
     line1 = LineSegment(source.p1, target.p1)
@@ -944,3 +989,65 @@ def compute_anti_penumbra2(source, target):
     p4 = Point(x4, y4)
     points = [p1, p2, p3, p4]
     return Polygon([(p.x, p.y) for p in points])
+
+
+def min_partitions(idx, line, lines):
+# def min_partitions(args):
+#     idx, line, lines = args
+    partition_count = 0
+    # if len(lines) > 1000:
+    #     samples = random.sample(lines, 1000)
+    # else:
+    samples = lines
+    for idx2, line2 in enumerate(samples):
+        # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
+        if idx != idx2:
+            res = line.compare(line2)
+            if res == 'P':
+                partition_count += 1
+    # print('Done {}'.format(idx))
+    return idx, partition_count
+
+
+def update_portals(obj, node_ids):
+    updated_portals = []
+    for node_id in node_ids:
+        node = obj.nodes[node_id]
+        updated_portals.append((node_id, obj._update_portals(node.portals)))
+    return updated_portals
+
+
+def process_portal_connections(portal_names, empty_leaves):
+    portal_conns = []
+    for portal_name in portal_names:
+        portal_conns.append((portal_name, [n.id for n in empty_leaves if portal_name in n.portals]))
+    return portal_conns
+
+
+def update_walls(obj, node_ids):
+    updated_walls = []
+    for node_id in node_ids:
+        node = obj.nodes[node_id]
+        updated_walls.append((node_id, obj._update_walls(node.walls)))
+    return updated_walls
+
+
+def correct_walls(obj, node_ids):
+    wall_names = [w.name for w in obj._walls]
+    corrected_walls = []
+    for node_id in node_ids:
+        node = obj.nodes[node_id]
+        corrected_walls.append((node_id, [w for w in node.walls if w in wall_names]))
+    return corrected_walls
+
+
+# def process_node_connectivity(node_id, node_portals, portal_connections):
+#     node_connectivity = dict()
+#     for portal in node.portals:
+#         node_connectivity[portal] = next(n for n in portal_connections[portal] if n != node)
+#     return node, node_connectivity
+
+def get_chunks(lst, n):
+    """Split lst into n-sized chunks"""
+    chunks = [lst[i:i + n] for i in range(0, len(lst), n)]
+    return chunks

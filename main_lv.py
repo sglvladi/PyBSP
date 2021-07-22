@@ -116,8 +116,8 @@ def plot_waypoints(point1, bsptree):
 
 def generate_ref_point(polygons):
     # return Point(300, 300)
-    return Point(400, 218)
-    # return Point(40, 400)
+    # return Point(400, 218)
+    return Point(40, 400)
 
 
 
@@ -135,6 +135,11 @@ def main():
 
     print('Generating tree')
     bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)), pool=pool)
+    print('\nGenerating portals...')
+    bsptree.gen_portals(pool)
+    print('\nGenerating walls...')
+    bsptree.gen_walls(pool)
+    # print('Done')
     # bsptree1 = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
     print('Generating PVS')
     bsptree.gen_pvs(pool)
@@ -198,14 +203,14 @@ def main():
         plt.text(x, y, leaf.id, color='r', fontsize='large', fontweight='bold')
     plt.pause(0.1)
 
-    for line in rendered_lines:
-        x, y = line.shapely.xy
-        plt.plot(x, y, 'r')
-        for point in line.shapely.boundary:
-            x = [point.x, point1.x]
-            y = [point.y, point1.y]
-            plt.plot(x, y, 'k--', linewidth=0.2)
-    plt.pause(0.1)
+    # for line in rendered_lines:
+    #     x, y = line.shapely.xy
+    #     plt.plot(x, y, 'r')
+    #     for point in line.shapely.boundary:
+    #         x = [point.x, point1.x]
+    #         y = [point.y, point1.y]
+    #         plt.plot(x, y, 'k--', linewidth=0.2)
+    # plt.pause(0.1)
 
     # a = bsptree.find_leaf(point1)
     # a.polygon.plot(color='r')
@@ -220,9 +225,37 @@ def main():
     #     plt.text(x,y, leaf.id, color='r')
     # plt.pause(0.1)
 
+
+    # for leaf in bsptree.empty_leaves:
+    #     pol = leaf.polygon
+    #     x, y = pol.shapely.centroid.x-15, pol.shapely.centroid.y-15
+    #     pol.plot(color='green')
+    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
+    # plt.pause(0.1)
+    #
+    # for leaf in bsptree.solid_leaves:
+    #     pol = leaf.polygon
+    #     x, y = pol.shapely.centroid.x-15, pol.shapely.centroid.y-15
+    #     pol.plot(color='red')
+    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
+    # plt.pause(0.1)
+    #
+    # PLot portals
+    for portal in bsptree._portals:
+        portal.plot(linewidth=3)
+    plt.pause(0.1)
+    #
+    # # PLot walls (per empty leaf)
+    # for node in bsptree.empty_leaves:
+    #     walls = [bsptree.get_wall(w) for w in node.walls]
+    #     for wall in walls:
+    #         wall.plot(linewidth=3)
+    #     plt.pause(0.1)
+    #     a=2
+
     node = bsptree.get_node(18)
     pvs = [n for n in bsptree.nodes if n.id in node.pvs]
-    wall_pvs = node.wall_pvs
+    wall_pvs = [bsptree.get_wall(w) for w in node.wall_pvs]
     art = plot_nodes(pvs)
     pol = node.polygon
     art.append(pol.plot(color='r'))
@@ -240,24 +273,7 @@ def main():
 
 
 
-    ## PLot portals
-    # for leaf in bsptree.empty_leaves:
-    #     pol = leaf.polygon
-    #     x, y = pol.centroid.x-15, pol.centroid.y-15
-    #     pol.plot(color='green')
-    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
-    # plt.pause(0.1)
-    #
-    # for leaf in bsptree.solid_leaves:
-    #     pol = leaf.polygon
-    #     x, y = pol.centroid.x-15, pol.centroid.y-15
-    #     pol.plot(color='red')
-    #     plt.text(x, y, leaf.id, color='w', fontsize='large', fontweight='bold')
-    # plt.pause(0.1)
-    #
-    # for portal in bsptree._portals:
-    #     portal.plot(linewidth=3)
-    # plt.pause(0.1)
+
 
     # for portal, nodes in bsptree.portal_connections.items():
     #     p = portal.plot(color='b')

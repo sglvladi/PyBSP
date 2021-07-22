@@ -169,33 +169,38 @@ def main():
     # t1 = datetime.datetime.now() - now
     now = datetime.datetime.now()
     bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
-    print('\nGenerating portals...')
-    bsptree.gen_portals()
-    print('\nGenerating walls...')
-    bsptree.gen_walls()
-    print('Done')
-    # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
-    # print('Generating PVS...')
-    # bsptree.gen_pvs(pool)
+    print('\nSaving Stage 1 BSP')
+    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage1.p'.format(TARGET, heuristic), 'wb'))
+    print('Generating portals...')
+    bsptree.gen_portals(pool)
+    print('\nSaving Stage 2 BSP')
+    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage2.p'.format(TARGET, heuristic), 'wb'))
+    print('Generating walls...')
+    bsptree.gen_walls(pool)
+    print('\nSaving Stage 3 BSP')
+    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage3.p'.format(TARGET, heuristic), 'wb'))
+    print('Generating PVS...')
+    bsptree.gen_pvs(pool)
+    print('\nSaving Full BSP')
+    pickle.dump(bsptree, open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'wb'))
     # print('Done')
 
-    bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
-    print('\nGenerating portals...')
-    bsptree2.gen_portals(pool)
-    print('\nGenerating walls...')
-    bsptree2.gen_walls()
-    print('Done')
-    # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
+    # bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
+    # print('\nGenerating portals...')
+    # bsptree2.gen_portals()
+    # print('\nGenerating walls...')
+    # bsptree2.gen_walls()
+    # # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
     # print('Generating PVS...')
-    # bsptree2.gen_pvs(pool)
-    # print('Done')
+    # bsptree2.gen_pvs()
 
 
     # t2 = datetime.datetime.now()-now
     # print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
     # pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))
 
-    # bsptree = pickle.load(open('trees/bsp_malta_min.p', 'rb'))
+    print('Loading BSP tree')
+    bsptree = pickle.load(open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'rb'))
 
     # Plot tree graph
     fig2 = plt.figure(figsize=(8, 6))
@@ -220,22 +225,23 @@ def main():
     now = datetime.datetime.now()
     rendered_lines = bsptree.render(point1, use_pvs=False)
     print(datetime.datetime.now()-now)
-    now = datetime.datetime.now()
-    rendered_lines = bsptree.render(point1, use_pvs=True)
-    print(datetime.datetime.now()-now)
+    # now = datetime.datetime.now()
+    # rendered_lines = bsptree.render(point1, use_pvs=True)
+    # print(datetime.datetime.now()-now)
     # pr.disable()
     print("done")
 
-    node = bsptree.get_node(441)
-    pvs = node.pvs
-    wall_pvs = node.wall_pvs
-    art = plot_nodes(pvs)
+    node = bsptree.find_leaf(point1)
+    # node = bsptree.get_node(180)
+    pvs = [bsptree.nodes[n] for n in node.pvs]
+    wall_pvs = [bsptree.get_wall(w) for w in node.wall_pvs]
+    art = plot_nodes(pvs, ax=ax1)
     pol = node.polygon
-    art.append(pol.plot(color='r'))
+    art.append(pol.plot(color='r', ax=ax1))
     x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
-    art.append(plt.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
+    art.append(ax1.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
     for line in wall_pvs:
-        art.append(line.plot(color='r'))
+        art.append(line.plot(color='r', ax=ax1))
     # for n in bsptree.empty_leaves:
     #     if n in pvs or node == n:
     #         continue

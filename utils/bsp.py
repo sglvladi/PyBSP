@@ -430,16 +430,31 @@ class BSP:
                     else:
                         self.nodes[node.back].portals.append(lines[0].name)
                         self.nodes[node.front].portals.append(lines[1].name)
-                    self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
+
+                    parts = p.name.split('_')
+                    it = 0
+                    if parts[0] in self._replacement_portals:
+                        current_dict = self._replacement_portals[parts[0]]
+                        it += 1
+                        while True:
+                            if not current_dict[parts[it]]:
+                                parts_0 = lines[0].name.split('_')
+                                parts_1 = lines[1].name.split('_')
+                                nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
+                                break
+                            else:
+                                current_dict = current_dict[parts[it]]
+                                it += 1
+                    else:
+                        parts_0 = lines[0].name.split('_')
+                        parts_1 = lines[1].name.split('_')
+                        self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
+
                     self._portals.remove(p)
                     self._portals += lines
                 elif res == 'C':
                     self.nodes[node.front].portals.append(p.name)
                     self.nodes[node.back].portals.append(p.name)
-
-        # node_portals = dict()
-        # for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
-        #     node_portals[node] = self._update_portals(node.portals)
 
         if pool:
             # Step 1 - Update portals
@@ -466,7 +481,10 @@ class BSP:
             for item in portal_connections_list:
                 portal = item[0]
                 nodes = item[1]
-                self.node_connectivity[nodes[0]][portal] = nodes[1]
+                try:
+                    self.node_connectivity[nodes[0]][portal] = nodes[1]
+                except:
+                    a=2
                 self.node_connectivity[nodes[1]][portal] = nodes[0]
         else:
             # Step 1 - Update portals
@@ -485,54 +503,34 @@ class BSP:
                 self.node_connectivity[nodes[0]][portal.name] = nodes[1]
                 self.node_connectivity[nodes[1]][portal.name] = nodes[0]
 
-        # if pool:
-        #     portal_names = [portal.name for portal in self._portals]
-        #     chunks = get_chunks(portal_names, chunk_size)
-        #     inputs = [(chunk, empty_leaves) for chunk in chunks]
-        #     portal_connections_chunks = pool.starmap(process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
-        #     portal_connections_list = [item for sublist in portal_connections_chunks for item in sublist]
-        #     self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
-        #     self.node_connectivity = {node.id: dict() for node in empty_leaves}
-        #     for item in portal_connections_list:
-        #         portal = item[0]
-        #         nodes = item[1]
-        #         self.node_connectivity[nodes[0]][portal] = nodes[1]
-        #         self.node_connectivity[nodes[1]][portal] = nodes[0]
-        # else:
-        #     self.portal_connections = dict()
-        #     self.node_connectivity = {node.id: dict() for node in empty_leaves}
-        #     for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
-        #         nodes = [n.id for n in empty_leaves if portal.name in n.portals]
-        #         self.portal_connections[portal.name] = nodes
-        #         self.node_connectivity[nodes[0]][portal.name] = nodes[1]
-        #         self.node_connectivity[nodes[1]][portal.name] = nodes[0]
-
-        # if pool:
-        #     inputs = [(node, {portal: self.portal_connections[portal] for portal in node.portals}) for node in empty_leaves]
-        #     node_connectivity = pool.starmap(process_node_connectivity, tqdm.tqdm(inputs, total=len(inputs)))
-        #     self.node_connectivity = {item[0]: item[1] for item in node_connectivity}
-        # else:
-        #     self.node_connectivity = dict()
-        #     for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
-        #         self.node_connectivity[node.id] = {portal: next(n for n in self.portal_connections[portal]
-        #                                                         if n != node.id)
-        #                                            for portal in node.portals}
-        #         # self.node_connectivity[node.id] = dict()
-        #         # for portal in node.portals:
-        #         #     self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
-
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'final.p'))
 
     def _update_portals(self, portals):
         portal_names = [p for p in portals]
-        processed_portals = set()
-        while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
-            for portal_name in portal_names:
-                if portal_name in self._replacement_portals.keys()-processed_portals:
-                    portal_names += set(self._replacement_portals[portal_name])
-                    processed_portals.add(portal_name)
-        return [p.name for p in self._portals if p.name in set(portal_names)-processed_portals]
+        new_portals = []
+        for p in portal_names:
+            parts = p.split('_')
+            new_portal = p
+            current_dict = nested_get(self._replacement_portals, parts)
+            if not current_dict:
+                new_portals.append(new_portal)
+                continue
+            new_parts = self._iter_dict(current_dict)
+            for part in new_parts:
+                new_portals.append(new_portal + '_' + part)
+        return [p.name for p in self._portals if p.name in new_portals]
+
+    def _iter_dict(self, current_dict):
+        vals = []
+        for key in current_dict:
+            if current_dict[key]:
+                vals_rec = self._iter_dict(current_dict[key])
+                for val in vals_rec:
+                    vals.append(key + '_' + val)
+            else:
+                vals.append(key)
+        return vals
 
     def gen_walls(self, pool=None, chunk_size=50, backup_folder=None):
 
@@ -566,7 +564,30 @@ class BSP:
                     else:
                         self.nodes[node.back].walls.append(lines[0].name)
                         self.nodes[node.front].walls.append(lines[1].name)
-                    self._replacement_portals[p.name] = [lines[0].name, lines[1].name]
+
+                    parts = p.name.split('_')
+                    it = 0
+                    if parts[0] in self._replacement_portals:
+                        current_dict = self._replacement_portals[parts[0]]
+                        it += 1
+                        while (True):
+                            if not current_dict[parts[it]]:
+                                parts_0 = lines[0].name.split('_')
+                                parts_1 = lines[1].name.split('_')
+                                nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
+                                a = 2
+                                break
+                            else:
+                                current_dict = current_dict[parts[it]]
+                                it += 1
+                                a = 2
+                        a = 2
+                    else:
+                        parts_0 = lines[0].name.split('_')
+                        parts_1 = lines[1].name.split('_')
+                        self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
+                        a = 2
+
                     self._walls.remove(p)
                     self._walls += lines
                 elif res == 'C':
@@ -577,11 +598,6 @@ class BSP:
             self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
 
         empty_leaves = self.empty_leaves
-
-
-        # updated_walls_1 = dict()
-        # for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-        #     updated_walls_1[node.id] = self._update_walls(node.walls)
 
         if pool:
             # Step 1 - Update walls
@@ -619,40 +635,25 @@ class BSP:
             self._walls = [w for w in self._walls if w.name not in portal_names]
             wall_names = [w.name for w in self._walls]
             for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-                # node.walls = [p for p in node.walls if p not in portal_names]
                 node.walls = [w for w in node.walls if w in wall_names]
-
-        # corrected_walls_1 = dict()
-        # wall_names = [w.name for w in self._walls]
-        # for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-        #     # node.walls = [p for p in node.walls if p not in portal_names]
-        #     corrected_walls_1[node.id] = [w for w in node.walls if w in wall_names]
-
-        # if pool:
-        #     inputs = [(self, chunk) for chunk in chunks]
-        #     corrected_walls_chunks = pool.starmap(correct_walls, tqdm.tqdm(inputs, total=len(inputs)))
-        #     corrected_walls = [item for sublist in corrected_walls_chunks for item in sublist]
-        #     corrected_walls = {item[0]: item[1] for item in corrected_walls}
-        #     for node in empty_leaves:
-        #         node.walls = corrected_walls[node.id]
-        # else:
-        #     wall_names = [w.name for w in self._walls]
-        #     for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-        #         # node.walls = [p for p in node.walls if p not in portal_names]
-        #         node.walls = [w for w in node.walls if w in wall_names]
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'final.p'))
 
     def _update_walls(self, portals):
         portal_names = [p for p in portals]
-        processed_portals = set()
-        while any([po in self._replacement_portals for po in set(portal_names)-processed_portals]):
-            for portal_name in portal_names:
-                if portal_name in self._replacement_portals.keys()-processed_portals:
-                    portal_names += set(self._replacement_portals[portal_name])
-                    processed_portals.add(portal_name)
-        return [p.name for p in self._walls if p.name in set(portal_names)-processed_portals]
+        new_portals = []
+        for p in portal_names:
+            parts = p.split('_')
+            new_portal = p
+            current_dict = nested_get(self._replacement_portals, parts)
+            if not current_dict:
+                new_portals.append(new_portal)
+                continue
+            new_parts = self._iter_dict(current_dict)
+            for part in new_parts:
+                new_portals.append(new_portal + '_' + part)
+        return [p.name for p in self._walls if p.name in new_portals]
 
     def sim_pvs(self, path):
         penumbras = []
@@ -1124,6 +1125,20 @@ def get_chunks(lst, n):
     return chunks
 
 
+def nested_get(dic, keys):
+    for key in keys:
+        if key not in dic:
+            return None
+        dic = dic[key]
+    return dic
+
+
+def nested_set(dic, keys, value):
+    for key in keys[:-1]:
+        dic = dic.setdefault(key, {})
+    dic[keys[-1]] = value
+
+    
 def splitall(path):
     allparts = []
     while 1:

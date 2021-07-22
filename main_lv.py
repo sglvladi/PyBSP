@@ -135,6 +135,9 @@ def main():
 
     print('Generating tree')
     bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)), pool=pool)
+    # bsptree1 = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
+    print('Generating PVS')
+    bsptree.gen_pvs(pool)
     # # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
     # pickle.dump(bsptree, open('trees/bsp_test_min.p', 'wb'))
     #

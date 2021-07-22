@@ -169,10 +169,28 @@ def main():
     # t1 = datetime.datetime.now() - now
     now = datetime.datetime.now()
     bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
-    pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
-    print('Generating PVS...', end='')
-    bsptree.gen_pvs(pool)
+    print('\nGenerating portals...')
+    bsptree.gen_portals()
+    print('\nGenerating walls...')
+    bsptree.gen_walls()
     print('Done')
+    # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
+    # print('Generating PVS...')
+    # bsptree.gen_pvs(pool)
+    # print('Done')
+
+    bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
+    print('\nGenerating portals...')
+    bsptree2.gen_portals(pool)
+    print('\nGenerating walls...')
+    bsptree2.gen_walls()
+    print('Done')
+    # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
+    # print('Generating PVS...')
+    # bsptree2.gen_pvs(pool)
+    # print('Done')
+
+
     # t2 = datetime.datetime.now()-now
     # print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
     # pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))

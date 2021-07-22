@@ -36,6 +36,22 @@ def min_partitions(idx, line, lines):
     # print('Done {}'.format(idx))
     return idx, partition_count
 
+
+def _update_portals(obj, node):
+    return node, obj._update_portals(node.portals)
+
+
+def _process_portal_connections(portal, empty_leaves):
+    return portal, [n for n in empty_leaves if portal in n.portals]
+
+
+def _process_node_connectivity(node, portal_connections):
+    node_connectivity = dict()
+    for portal in node.portals:
+        node_connectivity[portal] = next(n for n in portal_connections[portal] if n != node)
+    return node, node_connectivity
+
+
 class BSPNode:
     """BSP Node class"""
     def __init__(self, data=[], parent=None, polygon=None, plane=None, id=None):
@@ -323,13 +339,9 @@ class BSP:
         self._last_node_id = 0
         self.root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
         self._last_node_id += 1
+        print('\nGenerating tree...')
         self._generate_tree(self.root, self.heuristic, pool)
-        print('Generating portals...', end='')
-        self.gen_portals()
-        print('Done')
-        print('Generating walls...', end='')
-        self.gen_walls()
-        print('Done')
+
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -413,10 +425,12 @@ class BSP:
         if data_back:
             self._generate_tree(node.back, heuristic, pool=pool)
 
-    def gen_portals(self):
+    def gen_portals(self, pool=None):
         self._portals = []
         self._removed_portals = set()
         self._replacement_portals = dict()
+        empty_leaves = self.empty_leaves
+
         for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.portals = self._update_portals(node.portals)
@@ -453,19 +467,47 @@ class BSP:
                     node.front.portals.append(p)
                     node.back.portals.append(p)
 
-        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-            node.portals = self._update_portals(node.portals)
+        # node_portals = dict()
+        # for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
+        #     node_portals[node] = self._update_portals(node.portals)
 
-        self.portal_connections= dict()
-        for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
-            nodes = [n for n in self.empty_leaves if portal in n.portals]
-            self.portal_connections[portal] = nodes
+        if pool:
+            inputs = [(self, node) for node in empty_leaves]
+            updated_portals = pool.starmap(_update_portals, tqdm.tqdm(inputs, total=len(inputs)))
+            updated_portals = {item[0]: item[1] for item in updated_portals}
+            for node in empty_leaves:
+                node.portals = updated_portals[node]
+        else:
+            for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
+                node.portals = self._update_portals(node.portals)
 
-        self.node_connectivity = dict()
-        for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
-            self.node_connectivity[node] = dict()
-            for portal in node.portals:
-                self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
+        if pool:
+            inputs = [(portal, empty_leaves) for portal in self._portals]
+            portal_connections_list = pool.starmap(_process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
+            self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
+        else:
+            self.portal_connections = dict()
+            # self.node_connectivity = {node: dict() for node in empty_leaves}
+            for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
+                nodes = [n for n in empty_leaves if portal in n.portals]
+                self.portal_connections[portal] = nodes
+                # self.node_connectivity[nodes[0]][portal] = nodes[1]
+                # self.node_connectivity[nodes[1]][portal] = nodes[0]
+
+        if pool:
+            inputs = [(node, {portal: self.portal_connections[portal] for portal in node.portals}) for node in empty_leaves]
+            node_connectivity = pool.starmap(_process_node_connectivity, tqdm.tqdm(inputs, total=len(inputs)))
+            self.node_connectivity = {item[0]: item[1] for item in node_connectivity}
+        else:
+            self.node_connectivity = dict()
+            for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
+                self.node_connectivity[node] = dict()
+                self.node_connectivity[node] = {portal: next(n for n in self.portal_connections[portal] if n != node)
+                                                for portal in node.portals}
+                for portal in node.portals:
+                    self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
+
+
 
     def _update_portals(self, portals):
         portal_names = [p.name for p in portals]

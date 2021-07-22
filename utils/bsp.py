@@ -437,7 +437,7 @@ class BSP:
                         current_dict = self._replacement_portals[parts[0]]
                         it += 1
                         while True:
-                            if not current_dict[parts[it]]:
+                            if parts[it] not in current_dict or not current_dict[parts[it]]:
                                 parts_0 = lines[0].name.split('_')
                                 parts_1 = lines[1].name.split('_')
                                 nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
@@ -448,7 +448,10 @@ class BSP:
                     else:
                         parts_0 = lines[0].name.split('_')
                         parts_1 = lines[1].name.split('_')
-                        self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
+                        if len(parts)>1:
+                            nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
+                        else:
+                            self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
 
                     self._portals.remove(p)
                     self._portals += lines
@@ -481,10 +484,7 @@ class BSP:
             for item in portal_connections_list:
                 portal = item[0]
                 nodes = item[1]
-                try:
-                    self.node_connectivity[nodes[0]][portal] = nodes[1]
-                except:
-                    a=2
+                self.node_connectivity[nodes[0]][portal] = nodes[1]
                 self.node_connectivity[nodes[1]][portal] = nodes[0]
         else:
             # Step 1 - Update portals
@@ -571,7 +571,7 @@ class BSP:
                         current_dict = self._replacement_portals[parts[0]]
                         it += 1
                         while (True):
-                            if not current_dict[parts[it]]:
+                            if parts[it] not in current_dict or not current_dict[parts[it]]:
                                 parts_0 = lines[0].name.split('_')
                                 parts_1 = lines[1].name.split('_')
                                 nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
@@ -585,8 +585,10 @@ class BSP:
                     else:
                         parts_0 = lines[0].name.split('_')
                         parts_1 = lines[1].name.split('_')
-                        self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
-                        a = 2
+                        if len(parts) > 1:
+                            nested_set(self._replacement_portals, parts, {parts_0[-1]: dict(), parts_1[-1]: dict()})
+                        else:
+                            self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
 
                     self._walls.remove(p)
                     self._walls += lines

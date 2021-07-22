@@ -36,7 +36,11 @@ def main():
     SHOW_PLANES = True
     TARGET = "MALTA"
     heuristic = 'min'
-
+    backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
+    val = input("Enter backup location: ")
+    if val:
+        backup_folder = 'trees/{}'.format(val)
+    print(backup_folder)
     LIMITS = {
         "TEST": {
             "LON_MIN": -62.,
@@ -168,21 +172,17 @@ def main():
     # bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
     # t1 = datetime.datetime.now() - now
     now = datetime.datetime.now()
-    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool)
-    print('\nSaving Stage 1 BSP')
-    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage1.p'.format(TARGET, heuristic), 'wb'))
-    print('Generating portals...')
+    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool, backup_folder=backup_folder)
+
+    print('\nGenerating portals...')
     bsptree.gen_portals(pool)
-    print('\nSaving Stage 2 BSP')
-    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage2.p'.format(TARGET, heuristic), 'wb'))
-    print('Generating walls...')
+
+    print('\nGenerating walls...')
     bsptree.gen_walls(pool)
-    print('\nSaving Stage 3 BSP')
-    pickle.dump(bsptree, open('trees/bsp_{}_{}_stage3.p'.format(TARGET, heuristic), 'wb'))
-    print('Generating PVS...')
+
+    print('\nGenerating PVS...')
     bsptree.gen_pvs(pool)
-    print('\nSaving Full BSP')
-    pickle.dump(bsptree, open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'wb'))
+
     # print('Done')
 
     # bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))

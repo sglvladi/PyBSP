@@ -1,3 +1,6 @@
+import os.path
+import pickle
+
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -52,9 +55,10 @@ class BSPNode:
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
-    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), pool=None):
+    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), pool=None, backup_folder=None):
         """Constructor, initializes binary tree"""
         self.heuristic = heuristic
+        self.backup_folder = backup_folder
         self.bounds = bounds
         self.node_connectivity: Mapping[int, Mapping[str, int]] = dict()
         self.portal_connections = None
@@ -297,6 +301,8 @@ class BSP:
         self._generate_tree(root, self.heuristic, pool)
         self._nodes.sort(key=lambda x: x.id)
         self._nodes_sorted = True
+        if self.backup_folder:
+            self.serialize(os.path.join(self.backup_folder, 'Stage1', 'final.p'))
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -382,7 +388,11 @@ class BSP:
         if data_back:
             self._generate_tree(node_back, heuristic, pool=pool)
 
-    def gen_portals(self, pool=None, chunk_size=50):
+    def gen_portals(self, pool=None, chunk_size=50, backup_folder=None):
+
+        if not backup_folder and self.backup_folder:
+            backup_folder = os.path.join(self.backup_folder, 'Stage2')
+
         self._portals = []
         self._removed_portals = set()
         self._replacement_portals = dict()
@@ -442,6 +452,9 @@ class BSP:
             for node in empty_leaves:
                 node.portals = updated_portals[node.id]
 
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
+
             # Step 2 - Generate connectivity look-up tables
             portal_names = [portal.name for portal in self._portals]
             chunks = get_chunks(portal_names, chunk_size)
@@ -459,6 +472,9 @@ class BSP:
             # Step 1 - Update portals
             for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
                 node.portals = self._update_portals(node.portals)
+
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
 
             # Step 2 - Generate connectivity look-up tables
             self.portal_connections = dict()
@@ -505,6 +521,9 @@ class BSP:
         #         # for portal in node.portals:
         #         #     self.node_connectivity[node][portal] = next(n for n in self.portal_connections[portal] if n != node)
 
+        if backup_folder:
+            self.serialize(os.path.join(backup_folder, 'final.p'))
+
     def _update_portals(self, portals):
         portal_names = [p for p in portals]
         processed_portals = set()
@@ -515,7 +534,11 @@ class BSP:
                     processed_portals.add(portal_name)
         return [p.name for p in self._portals if p.name in set(portal_names)-processed_portals]
 
-    def gen_walls(self, pool=None, chunk_size=50):
+    def gen_walls(self, pool=None, chunk_size=50, backup_folder=None):
+
+        if not backup_folder and self.backup_folder:
+            backup_folder = os.path.join(self.backup_folder, 'Stage3')
+
         self._replacement_portals = dict()
         self._walls = []
         sorted_nodes = self.sort_nodes_back()
@@ -550,6 +573,9 @@ class BSP:
                     self.nodes[node.front].walls.append(p.name)
                     self.nodes[node.back].walls.append(p.name)
 
+        if backup_folder:
+            self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
+
         empty_leaves = self.empty_leaves
 
 
@@ -568,6 +594,9 @@ class BSP:
             for node in empty_leaves:
                 node.walls = updated_walls[node.id]
 
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
+
             # Step 2 - Remove portals
             portal_names = [p.name for p in self._portals]
             self._walls = [w for w in self._walls if w.name not in portal_names]
@@ -581,6 +610,9 @@ class BSP:
             # Step 1 - Update walls
             for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
                 node.walls = self._update_walls(node.walls)
+
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
 
             # Step 2 - Remove portals
             portal_names = [p.name for p in self._portals]
@@ -608,6 +640,9 @@ class BSP:
         #     for node in tqdm.tqdm(self.empty_leaves, total=len(self.empty_leaves)):
         #         # node.walls = [p for p in node.walls if p not in portal_names]
         #         node.walls = [w for w in node.walls if w in wall_names]
+
+        if backup_folder:
+            self.serialize(os.path.join(backup_folder, 'final.p'))
 
     def _update_walls(self, portals):
         portal_names = [p for p in portals]
@@ -643,16 +678,26 @@ class BSP:
             plt.pause(1)
         return penumbras, artists
 
-    def gen_pvs(self, pool=None):
+    def gen_pvs(self, pool=None, backup_folder=None):
+        if not backup_folder and self.backup_folder:
+            backup_folder = os.path.join(self.backup_folder, 'Stage4')
+
         self.node_pvs = dict()
         if pool:
             inputs = [(self, source_node.id) for source_node in self.empty_leaves]
 
             results = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
+
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
+
             for res in tqdm.tqdm(results):
                 source_node = self.nodes[res[0]]
                 source_node.pvs = res[1]
                 source_node.wall_pvs = res[2]
+
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'final.p'))
         else:
             for source_node in tqdm.tqdm(self.empty_leaves):
                 source_node.pvs = set()
@@ -667,6 +712,8 @@ class BSP:
                     target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
                     self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
                                             [source_node.id, target_node.id], [source_portal])
+                if backup_folder:
+                    self.serialize(os.path.join(backup_folder, 'final.p'))
                 # source_node.pvs = list(source_node.pvs)
                 # source_node.wall_pvs = list(source_node.wall_pvs)
 
@@ -972,6 +1019,16 @@ class BSP:
         _, artists = self.sim_pvs(path)
         return artists
 
+    def serialize(self, path):
+        print('\nSaving file: {}... '.format(path), end='')
+        dir_path, filename = os.path.split(path)
+        create_dirs(dir_path)
+        pickle.dump(self, open(path, 'wb'))
+        print('Done')
+
+
+
+
 
 # //////////////////////////////////////////////////////////////////////
 
@@ -1065,3 +1122,28 @@ def get_chunks(lst, n):
     """Split lst into n-sized chunks"""
     chunks = [lst[i:i + n] for i in range(0, len(lst), n)]
     return chunks
+
+
+def splitall(path):
+    allparts = []
+    while 1:
+        parts = os.path.split(path)
+        if parts[0] == path:  # sentinel for absolute paths
+            allparts.insert(0, parts[0])
+            break
+        elif parts[1] == path: # sentinel for relative paths
+            allparts.insert(0, parts[1])
+            break
+        else:
+            path = parts[0]
+            allparts.insert(0, parts[1])
+    return allparts
+
+
+def create_dirs(path):
+    parts = splitall(path)
+    for i in range(len(parts)):
+        path_tmp = ''.join([p+'/' for p in parts[:i+1]])
+        if os.path.exists(path_tmp):
+            continue
+        os.mkdir(path_tmp)

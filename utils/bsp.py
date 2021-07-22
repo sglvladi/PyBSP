@@ -113,6 +113,17 @@ class BSP:
             return True
         return False
 
+    def sort_nodes_back(self):
+        return self._sort_nodes(self.root)
+
+    def _sort_nodes(self, node):
+        nodes = [node]
+        if node.back is not None:
+            nodes += self._sort_nodes(self.nodes[node.back])
+        if node.front is not None:
+            nodes += self._sort_nodes(self.nodes[node.front])
+        return nodes
+
     @property
     def solid_leaves(self) -> [BSPNode]:
         """
@@ -377,7 +388,9 @@ class BSP:
         self._replacement_portals = dict()
         empty_leaves = self.empty_leaves
 
-        for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
+        sorted_nodes = self.sort_nodes_back()
+
+        for node in tqdm.tqdm(sorted_nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.portals = self._update_portals(node.portals)
             #
@@ -505,7 +518,8 @@ class BSP:
     def gen_walls(self, pool=None, chunk_size=50):
         self._replacement_portals = dict()
         self._walls = []
-        for node in tqdm.tqdm(self.nodes, total=len(self.nodes)):
+        sorted_nodes = self.sort_nodes_back()
+        for node in tqdm.tqdm(sorted_nodes, total=len(self.nodes)):
             # update node portals in case replacement or removal has occurred
             node.walls = self._update_walls(node.walls)
             if self.is_solid(node) or self.is_empty(node):

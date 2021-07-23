@@ -48,6 +48,9 @@ class Point:
     def __str__(self):
         return self.__repr__()
 
+    def __sub__(self, other):
+        return Point(self.x-other.x, self.y-other.y)
+
     def print(self):
         print(self.x, ' ', self.y)
 
@@ -169,42 +172,51 @@ class LineSegment:
         self.p2.Print()
         print(self.normal, '\n')
 
-    def compare(self, OtherLine):
+    def compare(self, other):
         """Compares two line segments for space partitioning, returns a character that identify the comparison of the two lines
-        if 'OtherLine' exists completely on side or other of our line segment (imagined as an infinite line segment), then it will return either 'F' or 'B' depending on the direction of 'OtherLine' to our line segment
-        if our line segment (infinite) intersects the 'Otherline' and thus causes the 'Otherline' to split into two, it returns 'P'
+        if 'other' exists completely on side or other of our line segment (imagined as an infinite line segment), then it will return either 'F' or 'B' depending on the direction of 'other' to our line segment
+        if our line segment (infinite) intersects the 'other' and thus causes the 'other' to split into two, it returns 'P'
         if both line segments are collinear, returns 'C'
         """
-        DotProduct1 = self.normalV.dot(
-            Vector(
-                (OtherLine.p1.x - self.p1.x),
-                (OtherLine.p1.y - self.p1.y)))
-        if abs(DotProduct1) < DoubleTolerance:
-            DotProduct1 = 0
 
-        DotProduct2 = self.normalV.dot(
-            Vector(
-                (OtherLine.p2.x - self.p1.x),
-                (OtherLine.p2.y - self.p1.y)))
-        if abs(DotProduct2) < DoubleTolerance:
-            DotProduct2 = 0
+        if isinstance(other, LineSegment):
+            p1 = np.array([other.p1.x - self.p1.x, other.p1.y - self.p1.y])
+            dot1 = np.dot(self.normalV.to_array(), p1)
+            if abs(dot1) < DoubleTolerance:
+                dot1 = 0
 
-        if (sign(DotProduct1) == 1 and sign(DotProduct2) == -1) \
-                or (sign(DotProduct1) == -1 and sign(DotProduct2) == 1):
-            # Lines Partition
-            return 'P'
+            p2 = np.array([other.p2.x - self.p1.x, other.p2.y - self.p1.y])
+            dot2 = np.dot(self.normalV.to_array(), p2)
+            if abs(dot2) < DoubleTolerance:
+                dot2 = 0
 
-        elif (DotProduct1 + DotProduct2) == 0:
-            # Lines Collinear
-            return 'C'
+            if (dot1 > 0 > dot2) or (dot1 < 0 < dot2):
+                return 'P'
+            elif dot1 == dot2 == 0:
+                return 'C'
+            elif dot1 + dot2 > 0:
+                return 'F'
+            elif dot1 + dot2 < 0:
+                return 'B'
+        else:
+            num_lines = len(other)
+            if not num_lines:
+                return []
+            p1 = np.array([[line.p1.x, line.p1.y] for line in other]) - self.p1.to_array()
+            dot1 = np.dot(self.normalV.to_array(), p1.T)
+            dot1[abs(dot1)<DoubleTolerance] = 0
 
-        elif sign(DotProduct1 + DotProduct2) == 1:
-            # Lines no Partition, in Front
-            return 'F'
+            p2 = np.array([[line.p2.x, line.p2.y] for line in other]) - self.p1.to_array()
+            dot2 = np.dot(self.normalV.to_array(), p2.T)
+            dot2[abs(dot2)<DoubleTolerance] = 0
 
-        elif sign(DotProduct1 + DotProduct2) == -1:
-            # Lines no Partition, in Back
-            return 'B'
+            res = np.array(['' for _ in range(num_lines)])
+            res[dot1 + dot2 < 0] = 'B'
+            res[dot1 + dot2 > 0] = 'F'
+            res[np.logical_and(dot1 == 0, dot2 == 0)] = 'C'
+            res[np.logical_or(np.logical_and(dot1 > 0, dot2 < 0), np.logical_and(dot1 < 0, dot2 > 0))] = 'P'
+
+            return list(res)
 
     def split(self, other):
         """

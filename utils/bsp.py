@@ -401,7 +401,8 @@ class BSP:
 
         sorted_nodes = self.sort_nodes_back()
 
-        for node in tqdm.tqdm(sorted_nodes, total=len(self.nodes)):
+        # Step 1 - Main generation process
+        for node in tqdm.tqdm(sorted_nodes, desc='Step 1'):
             # update node portals in case replacement has occurred
             node.portals = self._update_portals_walls(node.portals)
             #
@@ -463,11 +464,12 @@ class BSP:
             self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
 
         if pool:
-            # Step 1 - Update portals
+            # Step 2 - Update portals
             node_ids = [node.id for node in empty_leaves]
             chunks = get_chunks(node_ids, chunk_size)
             inputs = [(self, chunk) for chunk in chunks]
-            updated_portals_chunks = pool.starmap(update_portals_walls, tqdm.tqdm(inputs, total=len(inputs)))
+            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 2')
+            updated_portals_chunks = pool.starmap(update_portals_walls, tqdm_inputs)
             updated_portals = [item for sublist in updated_portals_chunks for item in sublist]
             updated_portals = {item[0]: item[1] for item in updated_portals}
             for node in empty_leaves:
@@ -476,30 +478,30 @@ class BSP:
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
 
-            # Step 2 - Extract walls and replace
+            # Step 3 - Extract walls and replace
             wall_names = [w for w in self._known_walls]
             wall_names = self._update_portals_walls(wall_names)
-            self._walls = {p_name: p for p_name, p in self._portals.items() if p.name in wall_names}
+            self._walls = {w_name: self._portals[w_name] for w_name in tqdm.tqdm(wall_names, desc='Step 3')}
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint3.p'))
 
-            # Step 3 - Filter out walls from portals
-            for p_name in self._walls:
-                self._portals.pop(p_name)
-            # self._portals = list(set(self._portals) - set(self._walls))
-            for node in empty_leaves:
-                node.walls = [p for p in node.portals if p in wall_names]
+            # Step 4 - Filter out walls from portals
+            portal_names = self._portals.keys() - self._walls.keys()
+            self._portals = {p_name: self._portals[p_name] for p_name in portal_names}
+            for node in tqdm.tqdm(empty_leaves, desc='Step 4'):
+                node.walls = list(set(node.portals).intersection(set(wall_names)))  # [p for p in node.portals if p in wall_names]
                 node.portals = list(set(node.portals) - set(node.walls))
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint4.p'))
 
-            # Step 4 - Generate connectivity look-up tables
+            # Step 5 - Generate connectivity look-up tables
             portal_names = [portal_name for portal_name in self._portals]
             chunks = get_chunks(portal_names, chunk_size)
             inputs = [(chunk, empty_leaves) for chunk in chunks]
-            portal_connections_chunks = pool.starmap(process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
+            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 5')
+            portal_connections_chunks = pool.starmap(process_portal_connections, tqdm_inputs)
             portal_connections_list = [item for sublist in portal_connections_chunks for item in sublist]
             self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
             self.node_connectivity = {node.id: dict() for node in empty_leaves}
@@ -509,14 +511,14 @@ class BSP:
                 self.node_connectivity[nodes[0]][portal] = nodes[1]
                 self.node_connectivity[nodes[1]][portal] = nodes[0]
         else:
-            # Step 1 - Update portals
+            # Step 2 - Update portals
             for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
                 node.portals = self._update_portals(node.portals)
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
 
-            # Step 2 - Extract walls and replace
+            # Step 3 - Extract walls and replace
             wall_names = [w.name for w in self._known_walls]
             wall_names = self._update_portals_walls(wall_names)
             self._walls = {p_name: p for p_name, p in self._portals.items() if p.name in wall_names}
@@ -524,8 +526,8 @@ class BSP:
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint3.p'))
 
-            # Step 3 - Filter out walls from portals
-            for p_name in self._walls:
+            # Step 4 - Filter out walls from portals
+            for p_name in tqdm.tqdm(self._walls):
                 self._portals.pop(p_name)
             # self._portals = list(set(self._portals) - set(self._walls))
             for node in empty_leaves:
@@ -535,7 +537,7 @@ class BSP:
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint4.p'))
 
-            # Step 4 - Generate connectivity look-up tables
+            # Step 5 - Generate connectivity look-up tables
             self.portal_connections = dict()
             self.node_connectivity = {node.id: dict() for node in empty_leaves}
             for portal_name in tqdm.tqdm(self._portals, total=len(self._portals)):
@@ -934,7 +936,7 @@ class BSP:
         return artists
 
     def serialize(self, path):
-        print('\nSaving file: {}... '.format(path), end='')
+        print('Saving file: {}... '.format(path), end='')
         dir_path, filename = os.path.split(path)
         create_dirs(dir_path)
         pickle.dump(self, open(path, 'wb'))

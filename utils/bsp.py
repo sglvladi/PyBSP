@@ -492,9 +492,21 @@ class BSP:
         # Step 4 - Filter out walls from portals
         portal_names = self._portals.keys() - self._walls.keys()
         self._portals = {p_name: self._portals[p_name] for p_name in portal_names}
-        for node in tqdm.tqdm(empty_leaves, desc='Step 4'):
-            node.walls = list(set(node.portals).intersection(set(wall_names)))  # [p for p in node.portals if p in wall_names]
-            node.portals = list(set(node.portals) - set(node.walls))
+        if pool:
+            inputs = [[node.id, node.portals] for node in empty_leaves]
+            chunks = get_chunks(inputs, chunk_size)
+            inputs = [(chunk, wall_names) for chunk in chunks]
+            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 4')
+            filtered_portals_chunks = pool.starmap(filter_node_portal_walls_chunk, tqdm_inputs)
+            filtered_portals = [item for sublist in filtered_portals_chunks for item in sublist]
+            filtered_portals = {item[0]: (item[1], item[2]) for item in filtered_portals}
+            for node in empty_leaves:
+                node.portals = filtered_portals[node.id][0]
+                node.walls = filtered_portals[node.id][1]
+        else:
+            for node in tqdm.tqdm(empty_leaves, desc='Step 4'):
+                node.walls = list(set(node.portals).intersection(set(wall_names)))  # [p for p in node.portals if p in wall_names]
+                node.portals = list(set(node.portals) - set(node.walls))
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'checkpoint4.p'))
@@ -966,6 +978,16 @@ def update_portals_walls_chunk(chunks, replacement_portals):
         node_id, node_portals = chunk
         updated_portals.append((node_id, update_portals_walls(node_portals, replacement_portals)))
     return updated_portals
+
+
+def filter_node_portal_walls_chunk(chunks, wall_names):
+    filtered_portals_walls = []
+    for chunk in chunks:
+        node_id, node_portals = chunk
+        node_walls = list(set(node_portals).intersection(set(wall_names)))
+        node_portals = list(set(node_portals) - set(node_walls))
+        filtered_portals_walls.append((node_id, node_portals, node_walls))
+    return filtered_portals_walls
 
 
 def process_portal_connections(portal_names, empty_leaves):

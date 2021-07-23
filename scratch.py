@@ -16,6 +16,8 @@ from utils.geometry import LineSegment, Point, Polygon
 import sys
 
 sys.setrecursionlimit(10000000)
+seed = np.random.randint(10000000)
+np.random.seed(seed)
 
 def merc_from_arrays(lats, lons):
     r_major = 6378137.000
@@ -35,7 +37,7 @@ def main():
     pool = mpp.Pool(mpp.cpu_count())
     SHOW_PLANES = True
     TARGET = "MALTA"
-    heuristic = 'min'
+    heuristic = 'rand'
     backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
     if val:
@@ -167,47 +169,23 @@ def main():
     xlim = plt.xlim()
     ylim = plt.ylim()
 
-    # print('Creating tree')
-    # now = datetime.datetime.now()
-    # bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
-    # t1 = datetime.datetime.now() - now
-    now = datetime.datetime.now()
+    # Create BSP tree
     bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool, backup_folder=backup_folder)
 
-    print('\nGenerating portals...')
-    bsptree.gen_portals(pool)
-
-    print('\nGenerating walls...')
-    bsptree.gen_walls(pool)
+    print('\nGenerating portals and walls...')
+    bsptree.gen_portals_walls(pool)
 
     print('\nGenerating PVS...')
     bsptree.gen_pvs(pool)
 
-    # print('Done')
-
-    # bsptree2 = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim))
-    # print('\nGenerating portals...')
-    # bsptree2.gen_portals()
-    # print('\nGenerating walls...')
-    # bsptree2.gen_walls()
-    # # pickle.dump(bsptree, open('trees/bsp_{}_{}_bare.p'.format(TARGET, heuristic), 'wb'))
-    # print('Generating PVS...')
-    # bsptree2.gen_pvs()
-
-
-    # t2 = datetime.datetime.now()-now
-    # print("T1: {} | T2: {}".format(t1.total_seconds(), t2.total_seconds()))
-    # pickle.dump(bsptree, open('trees/bsp_{}_{}.p'.format(TARGET, heuristic), 'wb'))
-
-    print('Loading BSP tree')
-    bsptree = pickle.load(open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'rb'))
+    # print('Loading BSP tree')
+    # bsptree = pickle.load(open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'rb'))
 
     # Plot tree graph
     fig2 = plt.figure(figsize=(8, 6))
     ax2 = fig2.add_subplot(111)
     bsptree.draw_nx(ax=ax2, show_labels=True)
     plt.pause(0.01)
-
 
     if SHOW_PLANES:
         ls = []

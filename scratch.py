@@ -12,6 +12,7 @@ import multiprocessing as mpp
 from utils.functions import plot_nodes, sort_fovs
 from utils.bsp import BSP
 from utils.geometry import LineSegment, Point, Polygon
+from utils.geo import load_target_lines
 
 import sys
 
@@ -19,15 +20,8 @@ sys.setrecursionlimit(10000000)
 seed = np.random.randint(10000000)
 np.random.seed(seed)
 
-def merc_from_arrays(lats, lons):
-    r_major = 6378137.000
-    x = r_major * np.radians(lons)
-    scale = x / lons
-    y = 180.0 / np.pi * np.log(np.tan(np.pi / 4.0 + lats * (np.pi / 180.0) / 2.0)) * scale
-    return (x, y)
 
-
-def generate_ref_point(polygons):
+def generate_ref_point():
     # return Point(1.5955e+06, 4.3e+06)
     # return Point(1.6019e+6, 4.305e+6)
     return Point(1.593e+6, 4.3e+6)
@@ -37,122 +31,18 @@ def main():
     pool = mpp.Pool(mpp.cpu_count())
     SHOW_PLANES = True
     TARGET = "MALTA"
-    heuristic = 'rand'
+    heuristic = 'random'
     backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
     if val:
         backup_folder = 'trees/{}'.format(val)
     print(backup_folder)
-    LIMITS = {
-        "TEST": {
-            "LON_MIN": -62.,
-            "LON_MAX": -61.5,
-            "LAT_MIN": 11.8,
-            "LAT_MAX": 12.2
-        },
-        "GLOBAL": {
-            "LON_MIN": -180.,
-            "LON_MAX": 180.,
-            "LAT_MIN": -80.,
-            "LAT_MAX": 80.,
-            "RES": 'c'
-        },
-        "FULL": {
-            "LON_MIN": -84.,
-            "LON_MAX": 34.5,
-            "LAT_MIN": 9.5,
-            "LAT_MAX": 62.,
-            "RES": 'c'
-        },
-        "CARIBBEAN": {
-            "LON_MIN": -90.,
-            "LON_MAX": -60.,
-            "LAT_MIN": 10.,
-            "LAT_MAX": 22.,
-            "RES": 'h'
-        },
-        "MEDITERRANEAN": {
-            "LON_MIN": -6.,
-            "LON_MAX": 36.5,
-            "LAT_MIN": 30.,
-            "LAT_MAX": 46.,
-            "RES": 'l'
-        },
-        "GREECE": {
-            "LON_MIN": 20.,
-            "LON_MAX": 28.2,
-            "LAT_MIN": 34.6,
-            "LAT_MAX": 41.,
-            "RES": 'h'
-        },
-        "UK": {
-            "LON_MIN": -12.,
-            "LON_MAX": 3.5,
-            "LAT_MIN": 48.,
-            "LAT_MAX": 60.,
-            "RES": 'h'
-        },
-        "MALTA": {
-            "LON_MIN": 14.04,
-            "LON_MAX": 14.68,
-            "LAT_MIN": 35.75,
-            "LAT_MAX": 36.14,
-            "RES": 'h'
-        },
-        "NEW_BRIGHTON": {
-            "LON_MIN": -3.13,
-            "LON_MAX": -2.9,
-            "LAT_MIN": 53.37,
-            "LAT_MAX": 53.46,
-            "RES": 'h'
-        },
-        "MINI_MALTA": {
-            "LON_MIN": 14.16,
-            "LON_MAX": 14.37,
-            "LAT_MIN": 36,
-            "LAT_MAX": 36.1,
-            "RES": 'h'
-        }
-    }
-    LON_MIN = LIMITS[TARGET]["LON_MIN"]
-    LON_MAX = LIMITS[TARGET]["LON_MAX"]
-    LAT_MIN = LIMITS[TARGET]["LAT_MIN"]
-    LAT_MAX = LIMITS[TARGET]["LAT_MAX"]
 
-    xs, ys = merc_from_arrays(np.array([LAT_MIN, LAT_MAX]), np.array([LON_MIN, LON_MAX]))
-    X_MIN, X_MAX = xs
-    Y_MIN, Y_MAX = ys
-    target_polygon = Polygon([(X_MIN, Y_MIN), (X_MIN, Y_MAX), (X_MAX, Y_MAX), (X_MAX, Y_MIN)])
-    polygons = pickle.load(open('shapefiles/polygons.p', 'rb'))
-    print('Loaded polygons')
+    # Load lines
+    lines = load_target_lines(TARGET)
 
-    print('Generating lines')
-    lines = []
-    for polygon in polygons:
-        if target_polygon.shapely.contains(polygon):
-            x, y = polygon.exterior.xy
-            # plt.plot(x, y)
-
-            points = []
-            for xi, yi in zip(x, y):
-                points.append(Point(xi, yi))
-
-            for i in range(len(points)):
-                if i == len(points) - 1:
-                    j = 0
-                else:
-                    j = i + 1
-                p1 = points[i]
-                p2 = points[j]
-                p11 = (p1.x, p1.y)
-                p22 = (p2.x, p2.y)
-                if p11 != p22:
-                    lines.append(LineSegment(p1, p2, -1, str(len(lines))))
-
-    # bsptree = BSP3()
-    # bsptree.tree.data = copy(lines)
-    # bsptree.generate_tree(bsptree.tree, heuristic='even')
-    point1 = generate_ref_point(polygons)
+    # Generate Reference point
+    ref_point = generate_ref_point()
 
     # Plot scene
     fig1 = plt.figure(figsize=(8, 6))
@@ -169,11 +59,28 @@ def main():
     xlim = plt.xlim()
     ylim = plt.ylim()
 
+    # line = lines[0]
+    # now = datetime.datetime.now()
+    # res3 = line.compare2([l for l in lines])
+    # print(datetime.datetime.now() - now)
+    # now = datetime.datetime.now()
+    # res = [line.compare(l) for l in lines]
+    # print(datetime.datetime.now() - now)
+    # now = datetime.datetime.now()
+    # res2 = [line.compare2(l) for l in lines]
+    # print(datetime.datetime.now() - now)
+
     # Create BSP tree
     bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool, backup_folder=backup_folder)
 
     print('\nGenerating portals and walls...')
+    pr.enable()
     bsptree.gen_portals_walls(pool)
+    pr.disable()
+
+    stats_filename = 'profile_{}.pstat'.format(3)
+    print("[INFO]: Dumping Profiler stats file {}".format(stats_filename))
+    pr.dump_stats(stats_filename)
 
     print('\nGenerating PVS...')
     bsptree.gen_pvs(pool)
@@ -194,22 +101,22 @@ def main():
         ax1.set_xlim(xlim)
         ax1.set_ylim(ylim)
 
-    ax1.plot(point1.x, point1.y, 'ko')
+    ax1.plot(ref_point.x, ref_point.y, 'ko')
     plt.pause(0.01)
 
     print("Rendering...", end='')
     # pr.enable()
-    # rendered_lines = plot_visibility2(bsptree, point1, plt.gca())
+    # rendered_lines = plot_visibility2(bsptree, ref_point, plt.gca())
     now = datetime.datetime.now()
-    rendered_lines = bsptree.render(point1, use_pvs=False)
+    rendered_lines = bsptree.render(ref_point, use_pvs=False)
     print(datetime.datetime.now()-now)
     # now = datetime.datetime.now()
-    # rendered_lines = bsptree.render(point1, use_pvs=True)
+    # rendered_lines = bsptree.render(ref_point, use_pvs=True)
     # print(datetime.datetime.now()-now)
     # pr.disable()
     print("done")
 
-    node = bsptree.find_leaf(point1)
+    node = bsptree.find_leaf(ref_point)
     # node = bsptree.get_node(180)
     pvs = [bsptree.nodes[n] for n in node.pvs]
     wall_pvs = [bsptree.get_wall(w) for w in node.wall_pvs]
@@ -252,8 +159,8 @@ def main():
         colors[tuple(line.names)] = color
         line.plot(ax=ax1, color=color)
         for point in line.shapely.boundary:
-            x = [point.x, point1.x]
-            y = [point.y, point1.y]
+            x = [point.x, ref_point.x]
+            y = [point.y, ref_point.y]
             ax1.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.1)
 
@@ -328,8 +235,8 @@ def main():
     #     colors[tuple(line.names)] = color
     #     line.plot(color=color)
     #     x, y = line.linestring.xy
-    #     x.append(point1.x)
-    #     y.append(point1.y)
+    #     x.append(ref_point.x)
+    #     y.append(ref_point.y)
     #     ps = [(xi, yi) for xi, yi in zip(x, y)]
     #     polygon = Polygon(ps)
     #     polygon.plot(color=color)
@@ -337,8 +244,8 @@ def main():
     #
     #     # line.plot(color=color)
     #     # for point in line.linestring.boundary:
-    #     #     x = [point.x, point1.x]
-    #     #     y = [point.y, point1.y]
+    #     #     x = [point.x, ref_point.x]
+    #     #     y = [point.y, ref_point.y]
     #     #     plt.plot(x, y, 'k--', linewidth=0.2)
     #     plt.pause(0.01)
     #     a=2
@@ -348,7 +255,7 @@ def main():
     #     plt.plot(point.x, point.y, 'bo')
 
     print("Finding leaf...", end='')
-    a = bsptree.find_leaf(point1)
+    a = bsptree.find_leaf(ref_point)
     print("Done")
     a.polygon.plot(color='r')
     plt.pause(0.01)
@@ -357,7 +264,7 @@ def main():
     ax = plt.gca()
     fovs = []
     for line in rendered_lines:
-        fovs.append(line.to_interval(point1))
+        fovs.append(line.to_interval(ref_point))
 
     fovs = sort_fovs(fovs)
     for fov in fovs:

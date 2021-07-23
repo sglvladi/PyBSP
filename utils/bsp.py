@@ -66,7 +66,7 @@ class BSP:
         self.wall_pvs = dict()
 
         self._walls = []
-        self._portals = []
+        self._portals = dict()
         self._nodes = []
         self._nodes_sorted = False
 
@@ -96,10 +96,11 @@ class BSP:
         return next(filter(lambda node: node.id == id, self.nodes), None)
 
     def get_portal(self, name):
-        return next(filter(lambda portal: portal.name == name, self._portals), None)
+        return self._portals[name]
 
     def get_wall(self, name):
-        return next(filter(lambda wall: wall.name == name, self._walls), None)
+        return self._walls[name]
+        #return next(filter(lambda wall: wall.name == name, self._walls), None)
 
     def is_leaf(self, node):
         return node.front is None and node.back is None
@@ -393,7 +394,7 @@ class BSP:
         if not backup_folder and self.backup_folder:
             backup_folder = os.path.join(self.backup_folder, 'Stage2')
 
-        self._portals = []
+        self._portals = dict()
         self._known_walls = set()
         self._replacement_portals = dict()
         empty_leaves = self.empty_leaves
@@ -411,7 +412,7 @@ class BSP:
             elif self.is_empty(node):
                 continue
             portal = node.plane
-            self._portals.append(portal)
+            self._portals[portal.name] = portal
             node.portals.append(portal.name)
             # Push down
             for p_name in node.portals:
@@ -452,8 +453,8 @@ class BSP:
                         else:
                             self._replacement_portals[p.name] = {parts_0[-1]: dict(), parts_1[-1]: dict()}
 
-                    self._portals.remove(p)
-                    self._portals += lines
+                    self._portals.pop(p.name)
+                    self._portals.update({l.name: l for l in lines})
                 elif res == 'C':
                     self.nodes[node.front].portals.append(p.name)
                     self.nodes[node.back].portals.append(p.name)
@@ -478,13 +479,15 @@ class BSP:
             # Step 2 - Extract walls and replace
             wall_names = [w for w in self._known_walls]
             wall_names = self._update_portals_walls(wall_names)
-            self._walls = [p for p in self._portals if p.name in wall_names]
+            self._walls = {p_name: p for p_name, p in self._portals.items() if p.name in wall_names}
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint3.p'))
 
             # Step 3 - Filter out walls from portals
-            self._portals = list(set(self._portals) - set(self._walls))
+            for p_name in self._walls:
+                self._portals.pop(p_name)
+            # self._portals = list(set(self._portals) - set(self._walls))
             for node in empty_leaves:
                 node.walls = [p for p in node.portals if p in wall_names]
                 node.portals = list(set(node.portals) - set(node.walls))
@@ -493,7 +496,7 @@ class BSP:
                 self.serialize(os.path.join(backup_folder, 'checkpoint4.p'))
 
             # Step 4 - Generate connectivity look-up tables
-            portal_names = [portal.name for portal in self._portals]
+            portal_names = [portal_name for portal_name in self._portals]
             chunks = get_chunks(portal_names, chunk_size)
             inputs = [(chunk, empty_leaves) for chunk in chunks]
             portal_connections_chunks = pool.starmap(process_portal_connections, tqdm.tqdm(inputs, total=len(inputs)))
@@ -516,13 +519,15 @@ class BSP:
             # Step 2 - Extract walls and replace
             wall_names = [w.name for w in self._known_walls]
             wall_names = self._update_portals_walls(wall_names)
-            self._walls = [p for p in self._portals if p.name in wall_names]
+            self._walls = {p_name: p for p_name, p in self._portals.items() if p.name in wall_names}
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint3.p'))
 
             # Step 3 - Filter out walls from portals
-            self._portals = list(set(self._portals) - set(self._walls))
+            for p_name in self._walls:
+                self._portals.pop(p_name)
+            # self._portals = list(set(self._portals) - set(self._walls))
             for node in empty_leaves:
                 node.walls = [p for p in node.portals if p in wall_names]
                 node.portals = node.portals - node.walls
@@ -533,11 +538,11 @@ class BSP:
             # Step 4 - Generate connectivity look-up tables
             self.portal_connections = dict()
             self.node_connectivity = {node.id: dict() for node in empty_leaves}
-            for portal in tqdm.tqdm(self._portals, total=len(self._portals)):
-                nodes = [n.id for n in empty_leaves if portal.name in n.portals]
-                self.portal_connections[portal.name] = nodes
-                self.node_connectivity[nodes[0]][portal.name] = nodes[1]
-                self.node_connectivity[nodes[1]][portal.name] = nodes[0]
+            for portal_name in tqdm.tqdm(self._portals, total=len(self._portals)):
+                nodes = [n.id for n in empty_leaves if portal_name in n.portals]
+                self.portal_connections[portal_name] = nodes
+                self.node_connectivity[nodes[0]][portal_name] = nodes[1]
+                self.node_connectivity[nodes[1]][portal_name] = nodes[0]
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'final.p'))

@@ -580,83 +580,44 @@ class BSP:
         if pool:
             inputs = [(self, source_node.id) for source_node in self.empty_leaves]
 
-            results = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
+            results = pool.starmap(gen_pvs_single, tqdm.tqdm(inputs, total=len(inputs)))
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint1.pickle'))
 
             for res in tqdm.tqdm(results):
                 source_node = self.nodes[res[0]]
-                source_node.pvs = res[1]
-                source_node.wall_pvs = res[2]
+                source_node.pvs = np.flatnonzero(res[1]).tolist()
+                source_node.wall_pvs = set()
+                for node_id in source_node.pvs:
+                    node = self.nodes[node_id]
+                    source_node.wall_pvs |= set(node.walls)
 
-            if backup_folder:
-                self.serialize(os.path.join(backup_folder, 'final.pickle'))
         else:
-            print()
             for source_node in tqdm.tqdm(self.empty_leaves):
-                source_node.pvs = set()
-                self.node_pvs[source_node.id] = dict()
-                source_node.wall_pvs = set(source_node.walls)
-                for source_portal_name in source_node.portals:
-                    source_portal = self.get_portal(source_portal_name)
-                    target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
-                    source_node.pvs.add(target_node.id)
-                    source_node.wall_pvs |= set(target_node.walls)
-                    target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
-                    self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
-                                            [source_node.id, target_node.id], [source_portal])
-            if backup_folder:
-                self.serialize(os.path.join(backup_folder, 'final.pickle'))
-                # source_node.pvs = list(source_node.pvs)
-                # source_node.wall_pvs = list(source_node.wall_pvs)
+                _, source_node_pvs = gen_pvs_single(self, source_node.id)
+                source_node.pvs = np.flatnonzero(source_node_pvs).tolist()
+                source_node.wall_pvs = set()
+                for node_id in source_node.pvs:
+                    node = self.nodes[node_id]
+                    source_node.wall_pvs |= set(node.walls)
 
-    def _gen_pvs(self, source_node_id):
-        source_node = self.nodes[source_node_id]
-        source_node.pvs = set()
-        self.node_pvs[source_node] = dict()
-        source_node.wall_pvs = set(source_node.walls)
-        a = 2
-        for source_portal_name in source_node.portals:
-            source_portal = self.get_portal(source_portal_name)
-            target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
-            source_node.pvs.add(target_node.id)
-            source_node.wall_pvs |= set(target_node.walls)
-            target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
-            self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
-                                    [source_node.id, target_node.id], [source_portal])
-        # source_node.pvs = list(source_node.pvs)
-        # source_node.pvs = [n.id for n in source_node.pvs]
-        return source_node_id, source_node.pvs, source_node.wall_pvs
+        if backup_folder:
+            self.serialize(os.path.join(backup_folder, 'final.pickle'))
 
-    def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals: list,
-                           visited_node_ids: list, visited_portals: list, last_penumbra=None):
-        target_portals = copy(target_portals)
-        visited_node_ids = copy(visited_node_ids)
-        visited_portals = copy(visited_portals)
+    def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals, last_portal,
+                           last_penumbra=None):
 
         # Check all portals except the one we are looking through
-        valid_target_portals = set(target_portals) - {visited_portals[-1]}
-        a = 2
-        for target_portal in valid_target_portals:
-            if source_portal.compare(target_portal) == 'C':
-                a = 2
+        for target_portal in set(target_portals) - {last_portal}:
+            if target_portal.shapely.length < 1.0 or source_portal.compare(target_portal) == 'C':
                 continue
             dest_node = self.nodes[self.node_connectivity[current_node.id][target_portal.name]]
 
-            # Avoid circle back to visited nodes
-            if target_portal in visited_portals: # dest_node == source_nod
-                continue
+            # Add destination node to source node's pvs
+            source_node.pvs[dest_node.id] = True
 
-            source_node.pvs.add(dest_node.id)
-            source_node.wall_pvs |= set(dest_node.walls)
-            # if dest_node.id in self.node_pvs[source_node]:
-            #     self.node_pvs[source_node][dest_node].append(visited_nodes+[dest_node])
-            # else:
-            #     self.node_pvs[source_node][dest_node] = [visited_nodes+[dest_node]]
-
-            # visited_portals = [self.get_portal(p_name) for p_name in visited_portal_names]
-            penumbra = compute_anti_penumbra2(visited_portals[-1], target_portal)
+            penumbra = compute_anti_penumbra2(last_portal, target_portal)
             if not penumbra.shapely.is_valid:
                 continue
             if last_penumbra:
@@ -690,18 +651,15 @@ class BSP:
                     continue
 
                 ls = dest_portal.shapely.intersection(penumbra.shapely)
-                if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
+                if not ls or not isinstance(ls, LineString) or ls.length < 1.:
                     continue
-                # if ls.length< 1e-1:
-                #     continue
 
                 dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
 
                 dest_portals.append(dest_portal)
 
             if len(dest_portals):
-                self._gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals,
-                                        visited_node_ids + [dest_node.id], visited_portals + [target_portal], penumbra)
+                self._gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals, target_portal, penumbra)
 
     def _traverse_tree_nx(self, node, g, parent=None):
         child = g.number_of_nodes() + 1
@@ -936,6 +894,22 @@ class BSP:
 
 
 # //////////////////////////////////////////////////////////////////////
+
+def gen_pvs_single(self, source_node_id):
+    source_node = self.nodes[source_node_id]
+    source_node.pvs = np.zeros((self.num_nodes,), dtype=bool)
+    source_node.pvs[source_node_id] = True
+    self.node_pvs[source_node] = dict()
+    for source_portal_name in source_node.portals:
+        source_portal = self.get_portal(source_portal_name)
+        target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
+        source_node.pvs[target_node.id] = True
+        target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
+        if source_portal.shapely.length < 1.0:
+            continue
+        self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal)
+    return source_node_id, source_node.pvs
+
 
 def cut_polygon_by_line(polygon, line):
     merged = linemerge([polygon.shapely.boundary, line])

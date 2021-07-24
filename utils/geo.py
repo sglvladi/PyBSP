@@ -1,6 +1,8 @@
 import os
 import pickle
 
+import shapefile
+from shapely.geometry import shape
 import numpy as np
 from .geometry import Point, LineSegment, Polygon
 
@@ -108,6 +110,19 @@ def get_merc_target_polygon(target):
     return target_polygon
 
 
+def load_target_polygons(target):
+    dirname = os.path.dirname(__file__)
+    polygons_filename = 'polygons.p'
+    polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'shapefiles', polygons_filename))
+    polygons = pickle.load(open(polygons_filepath, 'rb'))
+    target_polygon = get_merc_target_polygon(target)
+    target_polygons = []
+    for polygon in polygons:
+        if target_polygon.shapely.contains(polygon):
+            target_polygons.append(polygon)
+    return target_polygons
+
+
 def load_target_lines(target):
     dirname = os.path.dirname(__file__)
     filename = '{}.p'.format(target)
@@ -119,7 +134,7 @@ def load_target_lines(target):
         return lines
     else:
         print('[INFO]: No lines backup file found. Proceeding to generating lines...')
-        polygons_filename = 'polygons.p'
+        polygons_filename = 'merged_polygons.p'
         polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'shapefiles', polygons_filename))
         polygons = pickle.load(open(polygons_filepath, 'rb'))
         target_polygon = get_merc_target_polygon(target)

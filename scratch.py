@@ -29,7 +29,7 @@ def generate_ref_point():
 
 def main():
     SHOW_PLANES = True
-    TARGET = "MALTA"
+    TARGET = "UK"
     heuristic = 'random'
     backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
@@ -70,8 +70,9 @@ def main():
     # print(datetime.datetime.now() - now)
 
     # Create BSP tree
-    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), parallel=True, backup_folder=backup_folder)
-    bsptree.gen_portals_walls()
+    # bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), parallel=True, backup_folder=backup_folder)
+    # bsptree.gen_portals_walls()
+    bsptree = BSP.load(backup_folder, 'Stage2','final')
     bsptree.gen_pvs()
 
     # pr.enable()

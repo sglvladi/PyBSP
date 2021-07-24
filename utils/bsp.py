@@ -600,7 +600,7 @@ class BSP:
             plt.pause(1)
         return penumbras, artists
 
-    def gen_pvs(self, parallel=None, backup_folder=None):
+    def gen_pvs(self, parallel=None, backup_folder=None, chunk_size=5000):
         print('\nGenerating PVS...')
         if parallel is None:
             parallel = self.parallel
@@ -608,16 +608,36 @@ class BSP:
         pool = None
         if parallel:
             print('Initializing process pool...')
-            pool = mpp.Pool(mpp.cpu_count())
+            manager = mpp.Manager()
+            global panic
+            panic = manager.Value('i', False)
+            pool = mpp.Pool(mpp.cpu_count(), initializer=init_worker, initargs=(panic,))
 
         if not backup_folder and self.backup_folder:
             backup_folder = os.path.join(self.backup_folder, 'Stage3')
 
         self.node_pvs = dict()
         if pool:
-            inputs = [(self, source_node.id) for source_node in self.empty_leaves]
-
-            results = pool.starmap(gen_pvs_single, tqdm.tqdm(inputs, total=len(inputs)))
+            self._processed_pvs = []
+            bar = tqdm.tqdm(total=len(self.empty_leaves), position=0, desc='Overall')
+            chunks = get_chunks([n.id for n in self.empty_leaves], chunk_size)
+            results = []
+            for i, chunk in enumerate(chunks):
+                inputs = [(id, self.nodes, self._portals, self.node_connectivity) for id in chunk]
+                try:
+                    # res = list(tqdm.tqdm(pool.imap_unordered(gen_pvs_single, inputs, chunksize=60),
+                    #                      total=len(inputs), position=1, desc='Chunk'))
+                    res = pool.starmap(gen_pvs_single, tqdm.tqdm(inputs, total=len(inputs), position=1, desc='Chunk')) #, chunksize=30)
+                    results += res
+                    self._processed_pvs += chunk
+                    bar.update(len(chunk))
+                    self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(i)))
+                except KeyboardInterrupt:
+                    print('Interrupt handled smoothly...')
+                    pool.close()
+                    pool.join()
+                    self.serialize(os.path.join(backup_folder, 'checkpoint1_1.pickle'))
+                    return
 
             if backup_folder:
                 self.serialize(os.path.join(backup_folder, 'checkpoint1.pickle'))
@@ -645,62 +665,6 @@ class BSP:
         if pool:
             pool.close()
             pool.join()
-
-    def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals, last_portal,
-                           last_penumbra=None):
-
-        # Check all portals except the one we are looking through
-        for target_portal in set(target_portals) - {last_portal}:
-            if target_portal.shapely.length < 1.0 or source_portal.compare(target_portal) == 'C':
-                continue
-            dest_node = self.nodes[self.node_connectivity[current_node.id][target_portal.name]]
-
-            # Add destination node to source node's pvs
-            source_node.pvs[dest_node.id] = True
-
-            penumbra = compute_anti_penumbra2(last_portal, target_portal)
-            if not penumbra.shapely.is_valid:
-                continue
-            if last_penumbra:
-                intersection = last_penumbra.shapely.intersection(penumbra.shapely)
-                if isinstance(intersection, GeometryCollection):
-                    if intersection.is_empty:
-                        continue
-                    intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
-                elif isinstance(intersection, MultiPolygon):
-                    # TODO: Need to handle this!!!!
-                    continue
-                elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
-                    continue
-                elif not isinstance(intersection, ShapelyPolygon):
-                    continue
-                penumbra = Polygon.from_shapely(intersection)
-            if not penumbra.shapely.is_valid:
-                continue
-
-            dest_portals = []
-            # Check all portals, except the one we are looking through
-            p_names = set(dest_node.portals) - {target_portal.name}
-            valid_destination_portals = set([self.get_portal(p_name) for p_name in p_names]) - {target_portal}
-            for dest_portal in valid_destination_portals:
-                # If the destination portal is collinear to the target or source portals, then we can not see the node
-                # it leads to (at least not through the target node)
-                if dest_portal.compare(source_portal) == 'C' or dest_portal.compare(target_portal) == 'C':
-                    continue
-
-                if not penumbra.shapely.intersects(dest_portal.shapely):
-                    continue
-
-                ls = dest_portal.shapely.intersection(penumbra.shapely)
-                if not ls or not isinstance(ls, LineString) or ls.length < 1.:
-                    continue
-
-                dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
-
-                dest_portals.append(dest_portal)
-
-            if len(dest_portals):
-                self._gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals, target_portal, penumbra)
 
     def _traverse_tree_nx(self, node, g, parent=None):
         child = g.number_of_nodes() + 1
@@ -933,23 +897,114 @@ class BSP:
             return pickle.load(open(path, 'rb'))
 
 
-
 # //////////////////////////////////////////////////////////////////////
 
-def gen_pvs_single(self, source_node_id):
-    source_node = self.nodes[source_node_id]
-    source_node.pvs = np.zeros((self.num_nodes,), dtype=bool)
+def gen_pvs_single(source_node_id, nodes, portals, node_connectivity):
+# def gen_pvs_single(args):
+#     source_node_id, nodes, portals, node_connectivity = args
+    global panic
+    if panic.value:
+        # print('Skipping {}...'.format(source_node_id))
+        return None, None
+    # else:
+    #     print('Running {}'.format(source_node_id))
+    source_node = nodes[source_node_id]
+    source_node.pvs = np.zeros((len(nodes),), dtype=bool)
     source_node.pvs[source_node_id] = True
-    self.node_pvs[source_node] = dict()
     for source_portal_name in source_node.portals:
-        source_portal = self.get_portal(source_portal_name)
-        target_node = self.nodes[self.node_connectivity[source_node.id][source_portal_name]]
+        source_portal = portals[source_portal_name]
+        target_node = nodes[node_connectivity[source_node.id][source_portal_name]]
         source_node.pvs[target_node.id] = True
-        target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
+        target_portals = [portals[p_name] for p_name in target_node.portals]
         if source_portal.shapely.length < 1.0:
             continue
-        self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal)
+        gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal, nodes, portals,
+                          node_connectivity)
     return source_node_id, source_node.pvs
+
+
+def gen_pvs_chunk(source_node_ids, nodes, portals, node_connectivity):
+    global panic
+    if panic.value:
+        print('Skipping {}...'.format(source_node_ids))
+        return None
+    else:
+        print('Running {}'.format(source_node_ids))
+    for source_node_id in source_node_ids:
+        source_node = nodes[source_node_id]
+        source_node.pvs = np.zeros((len(nodes),), dtype=bool)
+        source_node.pvs[source_node_id] = True
+        for source_portal_name in source_node.portals:
+            source_portal = portals[source_portal_name]
+            target_node = nodes[node_connectivity[source_node.id][source_portal_name]]
+            source_node.pvs[target_node.id] = True
+            target_portals = [portals[p_name] for p_name in target_node.portals]
+            if source_portal.shapely.length < 1.0:
+                continue
+            gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal, nodes, portals,
+                              node_connectivity)
+        return source_node_id, source_node.pvs
+
+
+def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, last_portal,
+                      nodes, portals, node_connectivity, last_penumbra=None):
+    global panic
+    if panic.value:
+        # print('Skipping {}...'.format(source_node_ids))
+        return
+    # Check all portals except the one we are looking through
+    for target_portal in set(target_portals) - {last_portal}:
+        if target_portal.shapely.length < 1.0 or source_portal.compare(target_portal) == 'C':
+            continue
+        dest_node = nodes[node_connectivity[current_node.id][target_portal.name]]
+
+        # Add destination node to source node's pvs
+        source_node.pvs[dest_node.id] = True
+
+        penumbra = compute_anti_penumbra2(last_portal, target_portal)
+        if not penumbra.shapely.is_valid:
+            continue
+        if last_penumbra:
+            intersection = last_penumbra.shapely.intersection(penumbra.shapely)
+            if isinstance(intersection, GeometryCollection):
+                if intersection.is_empty:
+                    continue
+                intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
+            elif isinstance(intersection, MultiPolygon):
+                # TODO: Need to handle this!!!!
+                continue
+            elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
+                continue
+            elif not isinstance(intersection, ShapelyPolygon):
+                continue
+            penumbra = Polygon.from_shapely(intersection)
+        if not penumbra.shapely.is_valid:
+            continue
+
+        dest_portals = []
+        # Check all portals, except the one we are looking through
+        p_names = set(dest_node.portals) - {target_portal.name}
+        valid_destination_portals = set([portals[p_name] for p_name in p_names]) - {target_portal}
+        for dest_portal in valid_destination_portals:
+            # If the destination portal is collinear to the target or source portals, then we can not see the node
+            # it leads to (at least not through the target node)
+            if dest_portal.compare(source_portal) == 'C' or dest_portal.compare(target_portal) == 'C':
+                continue
+
+            if not penumbra.shapely.intersects(dest_portal.shapely):
+                continue
+
+            ls = dest_portal.shapely.intersection(penumbra.shapely)
+            if not ls or not isinstance(ls, LineString) or ls.length < 1.:
+                continue
+
+            dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
+
+            dest_portals.append(dest_portal)
+
+        if len(dest_portals):
+            gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals, target_portal, nodes,
+                              portals, node_connectivity, penumbra)
 
 
 def cut_polygon_by_line(polygon, line):
@@ -1111,6 +1166,7 @@ def create_dirs(path):
 def handler(signal_receiver, frame):
     global panic
     panic.value = True
+    print('Keyboard Interrupt Received!!!')
 
 
 def init_worker(args):

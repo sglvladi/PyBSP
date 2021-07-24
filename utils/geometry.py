@@ -1,6 +1,6 @@
 import math
 import numpy as np
-import shapely
+import shapely as shp
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon as pltPolygon
 from matplotlib.collections import PatchCollection
@@ -22,7 +22,7 @@ class Point:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.shapely = shapely.geometry.Point(x, y)
+        self._shapely = None
 
     # def __init__(self, *args):
     #     self._x = 0
@@ -50,6 +50,12 @@ class Point:
 
     def __sub__(self, other):
         return Point(self.x-other.x, self.y-other.y)
+
+    @property
+    def shapely(self):
+        if not self._shapely:
+            self._shapely = shp.geometry.Point(self.x, self.y)
+        return self._shapely
 
     def print(self):
         print(self.x, ' ', self.y)
@@ -119,7 +125,7 @@ class Vector:
 
 class LineSegment:
     """2D line segment class"""
-    def __init__(self, p1, p2, normal=1, name=''):
+    def __init__(self, p1, p2, normal=1, name='', linestring=None):
         """Arguments: p1 (type: Point), p2 (type: Point), normal (type: Int), name (type: String),
         arg 'normal' represents one of two possible directions of normal vector of our line segment, arg 'name
         is any arbitrary name for the purpose of identifying nodes when printing binary trees"""
@@ -133,6 +139,8 @@ class LineSegment:
         self.normalV = Vector(Dy, -Dx)
         if normal == -1:
             self.normalV = Vector(-Dy, Dx)
+
+        self._shapely = linestring
 
     def __repr__(self):
         return "LineSegment(name={}, p1={}, p2={}, normal={}, normalV={})".format(self.name, self.p1, self.p2,
@@ -154,7 +162,9 @@ class LineSegment:
 
     @property
     def shapely(self):
-        return LineString((self.p1.to_array(), self.p2.to_array()))
+        if not self._shapely:
+            self._shapely = LineString((self.p1.to_array(), self.p2.to_array()))
+        return self._shapely
 
     @property
     def mid_point(self):
@@ -308,7 +318,7 @@ class LineSegment:
         x, y = linestring.xy
         p1 = Point(x[0], y[0])
         p2 = Point(x[1], y[1])
-        return LineSegment(p1, p2, normal, name)
+        return LineSegment(p1, p2, normal, name, linestring=linestring)
 
 
 class MergedLine:
@@ -348,9 +358,10 @@ class MergedLine:
 
 class Polygon:
 
-    def __init__(self, points):
+    def __init__(self, points, shapely=None):
         self.points = [Point(p[0], p[1]) for p in points]
-        self.shapely = shapely.geometry.Polygon(points)
+        self._shapely = shapely
+
 
     def __repr__(self):
         points = [p for p in self.points]
@@ -364,11 +375,17 @@ class Polygon:
     #     x, y = self.exterior.xy
     #     return [Point(xi, yi) for xi, yi in zip(x, y)]
 
+    @property
+    def shapely(self):
+        if not self._shapely:
+            self._shapely = shp.geometry.Polygon([(p.x, p.y) for p in self.points])
+        return self._shapely
+
     @staticmethod
-    def from_shapely(pol: shapely.geometry.Polygon):
+    def from_shapely(pol: shp.geometry.Polygon):
         x, y = pol.exterior.xy
         points = [(xi, yi) for xi, yi in zip(x, y)]
-        return Polygon(points)
+        return Polygon(points, pol)
 
     def plot(self, ax=None, **kwargs):
         if not ax:

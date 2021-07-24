@@ -1,3 +1,4 @@
+import multiprocessing
 import os.path
 import pickle
 
@@ -303,7 +304,7 @@ class BSP:
         self._nodes.sort(key=lambda x: x.id)
         self._nodes_sorted = True
         if self.backup_folder:
-            self.serialize(os.path.join(self.backup_folder, 'Stage1', 'final.p'))
+            self.serialize(os.path.join(self.backup_folder, 'Stage1', 'final.pickle'))
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -389,7 +390,7 @@ class BSP:
         if data_back:
             self._generate_tree(node_back, heuristic, pool=pool)
 
-    def gen_portals_walls(self, pool=None, chunk_size=50, backup_folder=None):
+    def gen_portals_walls(self, pool=None, chunk_size=None, backup_folder=None):
 
         if not backup_folder and self.backup_folder:
             backup_folder = os.path.join(self.backup_folder, 'Stage2')
@@ -461,12 +462,15 @@ class BSP:
                     self.nodes[node.back].portals.append(p.name)
 
         if backup_folder:
-            self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
+            self.serialize(os.path.join(backup_folder, 'checkpoint1.pickle'))
 
         # Step 2 - Update portals
         if pool:
-            node_ids = [[node.id, node.portals] for node in empty_leaves]
-            chunks = get_chunks(node_ids, chunk_size)
+            inputs = [[node.id, node.portals] for node in empty_leaves]
+            if chunk_size:
+                chunks = get_chunks(inputs, chunk_size)
+            else:
+                chunks = get_n_chunks(inputs, multiprocessing.cpu_count())
             inputs = [(chunk, self._replacement_portals) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 2')
             updated_portals_chunks = pool.starmap(update_portals_walls_chunk, tqdm_inputs)
@@ -479,7 +483,7 @@ class BSP:
                 node.portals = update_portals_walls(node.portals, self._replacement_portals)
 
         if backup_folder:
-            self.serialize(os.path.join(backup_folder, 'checkpoint2.p'))
+            self.serialize(os.path.join(backup_folder, 'checkpoint2.pickle'))
 
         # Step 3 - Extract walls and replace
         wall_names = [w for w in self._known_walls]
@@ -487,14 +491,17 @@ class BSP:
         self._walls = {w_name: self._portals[w_name] for w_name in tqdm.tqdm(wall_names, desc='Step 3')}
 
         if backup_folder:
-            self.serialize(os.path.join(backup_folder, 'checkpoint3.p'))
+            self.serialize(os.path.join(backup_folder, 'checkpoint3.pickle'))
 
         # Step 4 - Filter out walls from portals
         portal_names = self._portals.keys() - self._walls.keys()
         self._portals = {p_name: self._portals[p_name] for p_name in portal_names}
         if pool:
             inputs = [[node.id, node.portals] for node in empty_leaves]
-            chunks = get_chunks(inputs, chunk_size)
+            if chunk_size:
+                chunks = get_chunks(inputs, chunk_size)
+            else:
+                chunks = get_n_chunks(inputs, multiprocessing.cpu_count())
             inputs = [(chunk, wall_names) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 4')
             filtered_portals_chunks = pool.starmap(filter_node_portal_walls_chunk, tqdm_inputs)
@@ -509,12 +516,15 @@ class BSP:
                 node.portals = list(set(node.portals) - set(node.walls))
 
         if backup_folder:
-            self.serialize(os.path.join(backup_folder, 'checkpoint4.p'))
+            self.serialize(os.path.join(backup_folder, 'checkpoint4.pickle'))
 
         # Step 5 - Generate connectivity look-up tables
         if pool:
             portal_names = [portal_name for portal_name in self._portals]
-            chunks = get_chunks(portal_names, chunk_size)
+            if chunk_size:
+                chunks = get_chunks(portal_names, chunk_size)
+            else:
+                chunks = get_n_chunks(portal_names, multiprocessing.cpu_count())
             inputs = [(chunk, empty_leaves) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 5')
             portal_connections_chunks = pool.starmap(process_portal_connections, tqdm_inputs)
@@ -536,7 +546,7 @@ class BSP:
                 self.node_connectivity[nodes[1]][portal_name] = nodes[0]
 
         if backup_folder:
-            self.serialize(os.path.join(backup_folder, 'final.p'))
+            self.serialize(os.path.join(backup_folder, 'final.pickle'))
 
     def sim_pvs(self, path):
         penumbras = []
@@ -564,7 +574,7 @@ class BSP:
 
     def gen_pvs(self, pool=None, backup_folder=None):
         if not backup_folder and self.backup_folder:
-            backup_folder = os.path.join(self.backup_folder, 'Stage4')
+            backup_folder = os.path.join(self.backup_folder, 'Stage3')
 
         self.node_pvs = dict()
         if pool:
@@ -573,7 +583,7 @@ class BSP:
             results = pool.starmap(BSP._gen_pvs, tqdm.tqdm(inputs, total=len(inputs)))
 
             if backup_folder:
-                self.serialize(os.path.join(backup_folder, 'checkpoint1.p'))
+                self.serialize(os.path.join(backup_folder, 'checkpoint1.pickle'))
 
             for res in tqdm.tqdm(results):
                 source_node = self.nodes[res[0]]
@@ -581,8 +591,9 @@ class BSP:
                 source_node.wall_pvs = res[2]
 
             if backup_folder:
-                self.serialize(os.path.join(backup_folder, 'final.p'))
+                self.serialize(os.path.join(backup_folder, 'final.pickle'))
         else:
+            print()
             for source_node in tqdm.tqdm(self.empty_leaves):
                 source_node.pvs = set()
                 self.node_pvs[source_node.id] = dict()
@@ -595,8 +606,8 @@ class BSP:
                     target_portals = [self.get_portal(p_name) for p_name in target_node.portals]
                     self._gen_pvs_recursive(source_node, target_node, source_portal, target_portals,
                                             [source_node.id, target_node.id], [source_portal])
-                if backup_folder:
-                    self.serialize(os.path.join(backup_folder, 'final.p'))
+            if backup_folder:
+                self.serialize(os.path.join(backup_folder, 'final.pickle'))
                 # source_node.pvs = list(source_node.pvs)
                 # source_node.wall_pvs = list(source_node.wall_pvs)
 
@@ -634,10 +645,8 @@ class BSP:
             dest_node = self.nodes[self.node_connectivity[current_node.id][target_portal.name]]
 
             # Avoid circle back to visited nodes
-            # if len(visited_nodes>200):
-            #     a=2
-            # if dest_node == source_node or target_portal in visited_portals:
-            #     continue
+            if target_portal in visited_portals: # dest_node == source_nod
+                continue
 
             source_node.pvs.add(dest_node.id)
             source_node.wall_pvs |= set(dest_node.walls)
@@ -653,6 +662,8 @@ class BSP:
             if last_penumbra:
                 intersection = last_penumbra.shapely.intersection(penumbra.shapely)
                 if isinstance(intersection, GeometryCollection):
+                    if intersection.is_empty:
+                        continue
                     intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
                 elif isinstance(intersection, MultiPolygon):
                     # TODO: Need to handle this!!!!
@@ -672,7 +683,7 @@ class BSP:
             for dest_portal in valid_destination_portals:
                 # If the destination portal is collinear to the target or source portals, then we can not see the node
                 # it leads to (at least not through the target node)
-                if dest_portal.compare(target_portal) == 'C' or dest_portal.compare(source_portal) == 'C':
+                if dest_portal.compare(source_portal) == 'C' or dest_portal.compare(target_portal) == 'C':
                     continue
 
                 if not penumbra.shapely.intersects(dest_portal.shapely):
@@ -681,11 +692,11 @@ class BSP:
                 ls = dest_portal.shapely.intersection(penumbra.shapely)
                 if not ls or not isinstance(ls, LineString) or ls.length < 0.1:
                     continue
+                # if ls.length< 1e-1:
+                #     continue
 
-                if ls.length< 1e-1:
-                    continue
                 dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
-                a = 2
+
                 dest_portals.append(dest_portal)
 
             if len(dest_portals):
@@ -905,6 +916,24 @@ class BSP:
         pickle.dump(self, open(path, 'wb'))
         print('Done')
 
+    @staticmethod
+    def load(path, stage=None, checkpoint=None):
+        if os.path.isdir(path):
+            if stage is None and checkpoint is None:
+                filepath = os.path.join(path, 'final.pickle')
+            else:
+                if isinstance(stage, int):
+                    stage = 'Stage{}'.format(stage)
+                if checkpoint == 'final':
+                    filename = 'final.pickle'
+                else:
+                    filename = 'checkpoint{}.pickle'.format(checkpoint)
+                filepath = os.path.join(path, stage, filename)
+            return pickle.load(open(filepath, 'rb'))
+        else:
+            return pickle.load(open(path, 'rb'))
+
+
 
 # //////////////////////////////////////////////////////////////////////
 
@@ -918,10 +947,10 @@ def cut_polygon_by_line(polygon, line):
 def compute_anti_penumbra2(source, target):
     line1 = LineSegment(source.p1, target.p1)
     line2 = LineSegment(source.p2, target.p2)
-    if not line1.shapely.intersects(line2.shapely):
-        if not line1.shapely.buffer(1e-7).intersects(line2.shapely):
-            line1 = LineSegment(source.p1, target.p2)
-            line2 = LineSegment(source.p2, target.p1)
+    # if not line1.shapely.intersects(line2.shapely):
+    if not line1.shapely.buffer(1e-7).intersects(line2.shapely):
+        line1 = LineSegment(source.p1, target.p2)
+        line2 = LineSegment(source.p2, target.p1)
 
     _, phi1 = line1.p2.to_polar(line1.p1)
     _, phi2 = line2.p2.to_polar(line2.p1)
@@ -991,6 +1020,8 @@ def filter_node_portal_walls_chunk(chunks, wall_names):
 
 
 def process_portal_connections(portal_names, empty_leaves):
+# def process_portal_connections(args):
+#     portal_names, empty_leaves = args
     portal_conns = []
     for portal_name in portal_names:
         portal_conns.append((portal_name, [n.id for n in empty_leaves if portal_name in n.portals]))
@@ -999,6 +1030,14 @@ def process_portal_connections(portal_names, empty_leaves):
 
 def get_chunks(lst, n):
     """Split lst into n-sized chunks"""
+    chunks = [lst[i:i + n] for i in range(0, len(lst), n)]
+    return chunks
+
+
+def get_n_chunks(lst, num_chunks):
+    """Split lst into n chunks"""
+    num_elements = len(lst)
+    n = int(np.ceil(num_elements/num_chunks))
     chunks = [lst[i:i + n] for i in range(0, len(lst), n)]
     return chunks
 

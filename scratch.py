@@ -12,7 +12,7 @@ import multiprocessing as mpp
 from utils.functions import plot_nodes, sort_fovs
 from utils.bsp import BSP
 from utils.geometry import LineSegment, Point, Polygon
-from utils.geo import load_target_lines
+from utils.geo import load_target_lines, load_target_polygons
 
 import sys
 
@@ -28,7 +28,6 @@ def generate_ref_point():
 
 
 def main():
-    pool = mpp.Pool(mpp.cpu_count())
     SHOW_PLANES = True
     TARGET = "MALTA"
     heuristic = 'random'
@@ -71,19 +70,15 @@ def main():
     # print(datetime.datetime.now() - now)
 
     # Create BSP tree
-    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), pool=pool, backup_folder=backup_folder)
+    bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), parallel=True, backup_folder=backup_folder)
+    bsptree.gen_portals_walls()
+    bsptree.gen_pvs()
 
-    print('\nGenerating portals and walls...')
-    pr.enable()
-    bsptree.gen_portals_walls(pool)
-    pr.disable()
-
-    stats_filename = 'profile_{}.pstat'.format(3)
-    print("[INFO]: Dumping Profiler stats file {}".format(stats_filename))
-    pr.dump_stats(stats_filename)
-
-    print('\nGenerating PVS...')
-    bsptree.gen_pvs(pool)
+    # pr.enable()
+    # pr.disable()
+    # stats_filename = 'profile_{}.pstat'.format(5)
+    # print("[INFO]: Dumping Profiler stats file {}".format(stats_filename))
+    # pr.dump_stats(stats_filename)
 
     # print('Loading BSP tree')
     # bsptree = pickle.load(open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'rb'))

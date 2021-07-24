@@ -1,12 +1,13 @@
-import multiprocessing
 import os.path
 import pickle
+import signal
+from copy import copy
+import multiprocessing as mpp
 
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.drawing.nx_pydot import graphviz_layout
-from copy import copy
 from shapely.geometry import LineString, MultiPolygon
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry.collection import GeometryCollection
@@ -56,8 +57,9 @@ class BSPNode:
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
-    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), pool=None, backup_folder=None):
+    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), parallel=True, backup_folder=None):
         """Constructor, initializes binary tree"""
+        self.parallel = parallel
         self.heuristic = heuristic
         self.backup_folder = backup_folder
         self.bounds = bounds
@@ -72,7 +74,7 @@ class BSP:
         self._nodes_sorted = False
 
         if lines:
-            self.generate_tree(lines, pool=pool)
+            self.generate_tree(lines)
 
     @property
     def root(self) -> [BSPNode]:
@@ -277,7 +279,7 @@ class BSP:
 
         return best_idx
 
-    def generate_tree(self, lines, heuristic=None, pool=None):
+    def generate_tree(self, lines, heuristic=None, parallel=None):
         """
         Generates the binary space partition tree recursively using the provided lines and specified heuristic
 
@@ -285,12 +287,21 @@ class BSP:
         ----------
         lines: list of LineSegment objects
             Wall segments to be used for building the tree.
-
         heuristic: str
             Selected method for building the tree. Possible values are: (i) 'even' for balanced tree; (ii) 'min' for
             least number of nodes; (iii) 'rand' for random generation
 
         """
+
+        print('\nGenerating tree...')
+        if parallel is None:
+            parallel = self.parallel
+
+        pool = None
+        if parallel:
+            print('Initializing process pool...')
+            pool = mpp.Pool(mpp.cpu_count())
+
         if heuristic:
             self.heuristic = heuristic
         polygon = Polygon(((self.bounds[0][0], self.bounds[1][0]), (self.bounds[0][0], self.bounds[1][1]),
@@ -299,12 +310,17 @@ class BSP:
         root = BSPNode(copy(lines), polygon=polygon, id=self._last_node_id)
         self.nodes.append(root)
         self._last_node_id += 1
-        print('\nGenerating tree...')
+
+        # Run recursive tree generation
         self._generate_tree(root, self.heuristic, pool)
         self._nodes.sort(key=lambda x: x.id)
         self._nodes_sorted = True
         if self.backup_folder:
             self.serialize(os.path.join(self.backup_folder, 'Stage1', 'final.pickle'))
+
+        if pool:
+            pool.close()
+            pool.join()
 
     def _generate_tree(self, node: BSPNode, heuristic='even', pool=None):
         best_idx = 0
@@ -390,7 +406,16 @@ class BSP:
         if data_back:
             self._generate_tree(node_back, heuristic, pool=pool)
 
-    def gen_portals_walls(self, pool=None, chunk_size=None, backup_folder=None):
+    def gen_portals_walls(self, parallel=None, chunk_size=None, backup_folder=None):
+
+        print('\nGenerating portals and walls...')
+        if parallel is None:
+            parallel = self.parallel
+
+        pool = None
+        if parallel:
+            print('Initializing process pool...')
+            pool = mpp.Pool(mpp.cpu_count())
 
         if not backup_folder and self.backup_folder:
             backup_folder = os.path.join(self.backup_folder, 'Stage2')
@@ -400,9 +425,8 @@ class BSP:
         self._replacement_portals = dict()
         empty_leaves = self.empty_leaves
 
-        sorted_nodes = self.sort_nodes_back()
-
         # Step 1 - Main generation process
+        sorted_nodes = self.sort_nodes_back()  # Nodes need to be sorted in depth-first search, priority to back nodes
         for node in tqdm.tqdm(sorted_nodes, desc='Step 1'):
             # update node portals in case replacement has occurred
             node.portals = update_portals_walls(node.portals, self._replacement_portals)
@@ -470,7 +494,7 @@ class BSP:
             if chunk_size:
                 chunks = get_chunks(inputs, chunk_size)
             else:
-                chunks = get_n_chunks(inputs, multiprocessing.cpu_count())
+                chunks = get_n_chunks(inputs, mpp.cpu_count())
             inputs = [(chunk, self._replacement_portals) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 2')
             updated_portals_chunks = pool.starmap(update_portals_walls_chunk, tqdm_inputs)
@@ -501,7 +525,7 @@ class BSP:
             if chunk_size:
                 chunks = get_chunks(inputs, chunk_size)
             else:
-                chunks = get_n_chunks(inputs, multiprocessing.cpu_count())
+                chunks = get_n_chunks(inputs, mpp.cpu_count())
             inputs = [(chunk, wall_names) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 4')
             filtered_portals_chunks = pool.starmap(filter_node_portal_walls_chunk, tqdm_inputs)
@@ -524,7 +548,7 @@ class BSP:
             if chunk_size:
                 chunks = get_chunks(portal_names, chunk_size)
             else:
-                chunks = get_n_chunks(portal_names, multiprocessing.cpu_count())
+                chunks = get_n_chunks(portal_names, mpp.cpu_count())
             inputs = [(chunk, empty_leaves) for chunk in chunks]
             tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 5')
             portal_connections_chunks = pool.starmap(process_portal_connections, tqdm_inputs)
@@ -547,6 +571,10 @@ class BSP:
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'final.pickle'))
+
+        if pool:
+            pool.close()
+            pool.join()
 
     def sim_pvs(self, path):
         penumbras = []
@@ -572,7 +600,16 @@ class BSP:
             plt.pause(1)
         return penumbras, artists
 
-    def gen_pvs(self, pool=None, backup_folder=None):
+    def gen_pvs(self, parallel=None, backup_folder=None):
+        print('\nGenerating PVS...')
+        if parallel is None:
+            parallel = self.parallel
+
+        pool = None
+        if parallel:
+            print('Initializing process pool...')
+            pool = mpp.Pool(mpp.cpu_count())
+
         if not backup_folder and self.backup_folder:
             backup_folder = os.path.join(self.backup_folder, 'Stage3')
 
@@ -604,6 +641,10 @@ class BSP:
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'final.pickle'))
+
+        if pool:
+            pool.close()
+            pool.join()
 
     def _gen_pvs_recursive(self, source_node, current_node, source_portal, target_portals, last_portal,
                            last_penumbra=None):
@@ -1065,3 +1106,14 @@ def create_dirs(path):
         if os.path.exists(path_tmp):
             continue
         os.mkdir(path_tmp)
+
+
+def handler(signal_receiver, frame):
+    global panic
+    panic.value = True
+
+
+def init_worker(args):
+    global panic
+    panic = args
+    signal.signal(signal.SIGINT, handler)

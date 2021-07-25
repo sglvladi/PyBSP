@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/LineOfSight.iml" filepath="$PROJECT_DIR$/.idea/LineOfSight.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/PyBSP.iml" filepath="$PROJECT_DIR$/.idea/PyBSP.iml" />
     </modules>
   </component>
 </project>

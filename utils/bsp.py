@@ -491,17 +491,11 @@ class BSP:
         # Step 2 - Update portals
         if pool:
             inputs = [[node.id, node.portals] for node in empty_leaves]
-            if chunk_size:
-                chunks = get_chunks(inputs, chunk_size)
-            else:
-                chunks = get_n_chunks(inputs, mpp.cpu_count())
-            inputs = [(chunk, self._replacement_portals) for chunk in chunks]
-            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 2')
-            updated_portals_chunks = pool.starmap(update_portals_walls_chunk, tqdm_inputs)
-            updated_portals = [item for sublist in updated_portals_chunks for item in sublist]
-            updated_portals = {item[0]: item[1] for item in updated_portals}
+            results_chunks = imap_tqdm_chunk(pool, update_portals_walls_chunk, inputs, (self._replacement_portals,),
+                                             chunksize=chunk_size, desc='Step 2')
+            results = {item[0]: item[1] for chunk in results_chunks for item in chunk}  # Unpack chunks
             for node in empty_leaves:
-                node.portals = updated_portals[node.id]
+                node.portals = results[node.id]
         else:
             for node in tqdm.tqdm(empty_leaves, total=len(empty_leaves)):
                 node.portals = update_portals_walls(node.portals, self._replacement_portals)
@@ -522,21 +516,15 @@ class BSP:
         self._portals = {p_name: self._portals[p_name] for p_name in portal_names}
         if pool:
             inputs = [[node.id, node.portals] for node in empty_leaves]
-            if chunk_size:
-                chunks = get_chunks(inputs, chunk_size)
-            else:
-                chunks = get_n_chunks(inputs, mpp.cpu_count())
-            inputs = [(chunk, wall_names) for chunk in chunks]
-            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 4')
-            filtered_portals_chunks = pool.starmap(filter_node_portal_walls_chunk, tqdm_inputs)
-            filtered_portals = [item for sublist in filtered_portals_chunks for item in sublist]
-            filtered_portals = {item[0]: (item[1], item[2]) for item in filtered_portals}
+            results_chunks = imap_tqdm_chunk(pool, filter_node_portal_walls_chunk, inputs, (wall_names,),
+                                             chunksize=chunk_size, desc='Step 4')
+            results = {item[0]: (item[1], item[2]) for chunk in results_chunks for item in chunk}  # Unpack chunks
             for node in empty_leaves:
-                node.portals = filtered_portals[node.id][0]
-                node.walls = filtered_portals[node.id][1]
+                node.portals = results[node.id][0]
+                node.walls = results[node.id][1]
         else:
             for node in tqdm.tqdm(empty_leaves, desc='Step 4'):
-                node.walls = list(set(node.portals).intersection(set(wall_names)))  # [p for p in node.portals if p in wall_names]
+                node.walls = list(set(node.portals).intersection(set(wall_names)))
                 node.portals = list(set(node.portals) - set(node.walls))
 
         if backup_folder:
@@ -545,21 +533,16 @@ class BSP:
         # Step 5 - Generate connectivity look-up tables
         if pool:
             portal_names = [portal_name for portal_name in self._portals]
-            if chunk_size:
-                chunks = get_chunks(portal_names, chunk_size)
-            else:
-                chunks = get_n_chunks(portal_names, mpp.cpu_count())
-            inputs = [(chunk, empty_leaves) for chunk in chunks]
-            tqdm_inputs = tqdm.tqdm(inputs, total=len(inputs), desc='Step 5')
-            portal_connections_chunks = pool.starmap(process_portal_connections, tqdm_inputs)
-            portal_connections_list = [item for sublist in portal_connections_chunks for item in sublist]
+            results_chunks = imap_tqdm_chunk(pool, process_portal_connections, portal_names, (empty_leaves,),
+                                             chunksize=chunk_size, desc='Step 5')
+            portal_connections_list = [item for chunk in results_chunks for item in chunk] # Unpack chunks
             self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
             self.node_connectivity = {node.id: dict() for node in empty_leaves}
             for item in portal_connections_list:
                 portal = item[0]
-                nodes = item[1]
-                self.node_connectivity[nodes[0]][portal] = nodes[1]
-                self.node_connectivity[nodes[1]][portal] = nodes[0]
+                node1, node2 = item[1]
+                self.node_connectivity[node1][portal] = node2
+                self.node_connectivity[node2][portal] = node1
         else:
             self.portal_connections = dict()
             self.node_connectivity = {node.id: dict() for node in empty_leaves}
@@ -618,37 +601,34 @@ class BSP:
 
         self.node_pvs = dict()
         if pool:
-            self._processed_pvs = []
+            self._processed_pvs = np.zeros((self.num_nodes,), dtype=bool)
             bar = tqdm.tqdm(total=len(self.empty_leaves), position=0, desc='Overall')
             chunks = get_chunks([n.id for n in self.empty_leaves], chunk_size)
-            results = []
+            last_processed_node_id = 0
             for i, chunk in enumerate(chunks):
                 inputs = [(id, self.nodes, self._portals, self.node_connectivity) for id in chunk]
                 try:
-                    # res = list(tqdm.tqdm(pool.imap_unordered(gen_pvs_single, inputs, chunksize=60),
-                    #                      total=len(inputs), position=1, desc='Chunk'))
-                    res = pool.starmap(gen_pvs_single, tqdm.tqdm(inputs, total=len(inputs), position=1, desc='Chunk')) #, chunksize=30)
-                    results += res
-                    self._processed_pvs += chunk
+                    results = imap_tqdm(pool, gen_pvs_single, inputs, position=1,
+                                        desc='Chunk {}/{}'.format(i+1, len(chunks)))
+                    self._processed_pvs[chunk] = True
+
+                    for res in results:
+                        source_node = self.nodes[res[0]]
+                        source_node.pvs = np.flatnonzero(res[1]).tolist()
+                        source_node.wall_pvs = set()
+                        for node_id in source_node.pvs:
+                            node = self.nodes[node_id]
+                            source_node.wall_pvs |= set(node.walls)
+
                     bar.update(len(chunk))
-                    self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(i)))
+                    last_processed_node_id = chunk[-1]
+                    self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(last_processed_node_id)))
                 except KeyboardInterrupt:
                     print('Interrupt handled smoothly...')
                     pool.close()
                     pool.join()
-                    self.serialize(os.path.join(backup_folder, 'checkpoint1_1.pickle'))
+                    self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(last_processed_node_id)))
                     return
-
-            if backup_folder:
-                self.serialize(os.path.join(backup_folder, 'checkpoint1.pickle'))
-
-            for res in tqdm.tqdm(results):
-                source_node = self.nodes[res[0]]
-                source_node.pvs = np.flatnonzero(res[1]).tolist()
-                source_node.wall_pvs = set()
-                for node_id in source_node.pvs:
-                    node = self.nodes[node_id]
-                    source_node.wall_pvs |= set(node.walls)
 
         else:
             for source_node in tqdm.tqdm(self.empty_leaves):
@@ -898,10 +878,30 @@ class BSP:
 
 
 # //////////////////////////////////////////////////////////////////////
+def imap_tqdm_chunk(pool, f, inputs, batch_inputs, chunksize=None, **tqdm_kwargs):
+    if chunksize:
+        chunks = get_chunks(inputs, chunksize)
+    else:
+        chunks = get_n_chunks(inputs, mpp.cpu_count())
+    batch_inputs = tuple(batch_inputs)
+    inputs = [(chunk, *batch_inputs) for chunk in chunks]
+    p_chunksize, extra = divmod(len(inputs), len(pool._pool) * 4)
+    if extra:
+        p_chunksize += 1
+    return list(tqdm.tqdm(pool.imap_unordered(f, inputs, chunksize=p_chunksize), total=len(inputs), **tqdm_kwargs))
 
-def gen_pvs_single(source_node_id, nodes, portals, node_connectivity):
-# def gen_pvs_single(args):
-#     source_node_id, nodes, portals, node_connectivity = args
+
+def imap_tqdm(pool, f, inputs, **tqdm_kwargs):
+    # Calculation of chunksize taken from pool._map_async
+    chunksize, extra = divmod(len(inputs), len(pool._pool) * 4)
+    if extra:
+        chunksize += 1
+    results = list(tqdm.tqdm(pool.imap_unordered(f, inputs, chunksize=chunksize), total=len(inputs), **tqdm_kwargs))
+    return results
+
+# def gen_pvs_single(source_node_id, nodes, portals, node_connectivity):
+def gen_pvs_single(args):
+    source_node_id, nodes, portals, node_connectivity = args
     global panic
     if panic.value:
         # print('Skipping {}...'.format(source_node_id))
@@ -1071,7 +1071,9 @@ def update_portals_walls(portals, replacement_portals):
     return new_portals
 
 
-def update_portals_walls_chunk(chunks, replacement_portals):
+# def update_portals_walls_chunk(chunks, replacement_portals):
+def update_portals_walls_chunk(args):
+    chunks, replacement_portals = args
     updated_portals = []
     for chunk in chunks:
         node_id, node_portals = chunk
@@ -1079,7 +1081,9 @@ def update_portals_walls_chunk(chunks, replacement_portals):
     return updated_portals
 
 
-def filter_node_portal_walls_chunk(chunks, wall_names):
+# def filter_node_portal_walls_chunk(chunks, wall_names):
+def filter_node_portal_walls_chunk(args):
+    chunks, wall_names = args
     filtered_portals_walls = []
     for chunk in chunks:
         node_id, node_portals = chunk
@@ -1089,9 +1093,9 @@ def filter_node_portal_walls_chunk(chunks, wall_names):
     return filtered_portals_walls
 
 
-def process_portal_connections(portal_names, empty_leaves):
-# def process_portal_connections(args):
-#     portal_names, empty_leaves = args
+# def process_portal_connections(portal_names, empty_leaves):
+def process_portal_connections(args):
+    portal_names, empty_leaves = args
     portal_conns = []
     for portal_name in portal_names:
         portal_conns.append((portal_name, [n.id for n in empty_leaves if portal_name in n.portals]))

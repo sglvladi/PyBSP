@@ -3,7 +3,9 @@ import pickle
 import signal
 from copy import copy
 import multiprocessing as mpp
+from collections.abc import Mapping
 
+import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -11,7 +13,7 @@ from networkx.drawing.nx_pydot import graphviz_layout
 from shapely.geometry import LineString, MultiPolygon
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry.collection import GeometryCollection
-from shapely.ops import linemerge, unary_union, polygonize, split
+from shapely.ops import linemerge, unary_union, polygonize
 from stonesoup.functions import pol2cart
 
 from .angles import angle_between
@@ -19,16 +21,9 @@ from .geometry import LineSegment, Point, Polygon
 from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
 
-# from multiprocessing import Pool, cpu_count
-import tqdm
-import random
-# from joblib import Parallel, delayed
-
-from collections.abc import Mapping
-
 class BSPNode:
     """BSP Node class"""
-    def __init__(self, data=[], parent=None, polygon=None, plane=None, id=None):
+    def __init__(self, data=None, parent=None, polygon=None, plane=None, id=None):
         """Constructor, declares variables for left and right sub-tree and data for the current node"""
         self.parent = parent
         self.front = None
@@ -103,12 +98,13 @@ class BSP:
 
     def get_wall(self, name):
         return self._walls[name]
-        #return next(filter(lambda wall: wall.name == name, self._walls), None)
 
-    def is_leaf(self, node):
+    @staticmethod
+    def is_leaf(node):
         return node.front is None and node.back is None
 
-    def is_root(self, node):
+    @staticmethod
+    def is_root(node):
         return node.parent is None
 
     def is_solid(self, node):
@@ -211,17 +207,7 @@ class BSP:
         min_idx = 0
         if pool:
             inputs = [(idx, line, lines) for idx, line in enumerate(lines)]
-            # mins = list(tqdm.tqdm(self.pool.istarmap(min_partitions, inputs), total=len(inputs)))
-            # mins = []
-            # for _ in tqdm.tqdm(self.pool.imap_unordered(min_partitions, inputs), total=len(inputs)):
-            #     pass
-            #     mins.append(result)
-            # mins = self.pool.starmap(min_partitions, [(idx, line, lines) for idx, line in enumerate(lines)])
-            # mins = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(min_partitions)(idx, line, lines) for idx, line in enumerate(lines))
-
-            # mins = self.pool.imap_unordered(min_partitions, inputs)
-            # mins = pool.imap(min_partitions, inputs)
-            mins = pool.starmap(min_partitions, tqdm.tqdm(inputs, total=len(inputs)))
+            mins = imap_tqdm(pool, min_partitions, inputs)
             mins_0 = [m[0] for m in mins]
             mins_1 = [m[1] for m in mins]
             min_idx_tmp = np.argmin(mins_1)
@@ -328,7 +314,7 @@ class BSP:
         if heuristic == 'min':
             best_idx = self.heuristic_min_partition(node.data, pool)
         elif heuristic == 'even':
-            best_idx = self.heuristic_even_partition(node.data, pool)
+            best_idx = self.heuristic_even_partition(node.data)
         elif heuristic == 'rand':
             best_idx = np.random.randint(len(node.data))
 
@@ -632,7 +618,7 @@ class BSP:
 
         else:
             for source_node in tqdm.tqdm(self.empty_leaves):
-                _, source_node_pvs = gen_pvs_single(self, source_node.id)
+                _, source_node_pvs = gen_pvs_single((self, source_node.id))
                 source_node.pvs = np.flatnonzero(source_node_pvs).tolist()
                 source_node.wall_pvs = set()
                 for node_id in source_node.pvs:
@@ -671,7 +657,9 @@ class BSP:
 
         g = self.nx_graph
         pos = graphviz_layout(g, prog="dot")
-        # pos = {n: g.nodes[n]['data'][0].getMidPoint().to_array() if g.nodes[n]['data'] else np.array([g.nodes[n]['polygon'].centroid.x, g.nodes[n]['polygon'].centroid.y])
+        # pos = {n: g.nodes[n]['data'][0].getMidPoint().to_array()
+        #        if g.nodes[n]['data']
+        #        else np.array([g.nodes[n]['polygon'].centroid.x, g.nodes[n]['polygon'].centroid.y])
         #        for n in g.nodes}
 
         nx.draw(g, pos, ax=ax)
@@ -682,7 +670,7 @@ class BSP:
 
         if show_labels:
             labels = {n: [l.name for l in g.nodes[n]['data']] if g.nodes[n]['data'] else '' for n in g.nodes}
-            labels = {n: g.nodes[n]['id'] for n in g.nodes} #  if g.nodes[n]['leaf']}
+            labels = {n: g.nodes[n]['id'] for n in g.nodes}  # if g.nodes[n]['leaf']}
             pos_labels = {}
             for node, coords in pos.items():
                 # if g.nodes[node]['leaf']:
@@ -1037,9 +1025,9 @@ def compute_anti_penumbra2(source, target):
     return Polygon([(p.x, p.y) for p in points])
 
 
-def min_partitions(idx, line, lines):
-# def min_partitions(args):
-#     idx, line, lines = args
+# def min_partitions(idx, line, lines):
+def min_partitions(args):
+    idx, line, lines = args
     partition_count = 0
     # if len(lines) > 1000:
     #     samples = random.sample(lines, 1000)

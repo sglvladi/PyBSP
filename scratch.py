@@ -12,7 +12,7 @@ import multiprocessing as mpp
 from utils.functions import plot_nodes, sort_fovs
 from utils.bsp import BSP
 from utils.geometry import LineSegment, Point, Polygon
-from utils.geo import load_target_lines, load_target_polygons
+from utils.geo import load_target_lines, get_merc_limits
 
 import sys
 
@@ -29,8 +29,8 @@ def generate_ref_point():
 
 def main():
     SHOW_PLANES = True
-    TARGET = "UK"
-    heuristic = 'random'
+    TARGET = "MALTA"
+    heuristic = 'min'
     backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
     if val:
@@ -58,6 +58,8 @@ def main():
     xlim = plt.xlim()
     ylim = plt.ylim()
 
+    xmin, xmax, ymin, ymax = get_merc_limits(TARGET)
+
     # line = lines[0]
     # now = datetime.datetime.now()
     # res3 = line.compare2([l for l in lines])
@@ -70,10 +72,15 @@ def main():
     # print(datetime.datetime.now() - now)
 
     # Create BSP tree
-    # bsptree = BSP(lines, heuristic=heuristic, bounds=(xlim, ylim), parallel=True, backup_folder=backup_folder)
-    # bsptree.gen_portals_walls()
-    bsptree = BSP.load(backup_folder, 'Stage2','final')
-    bsptree.gen_pvs()
+    bsptree = BSP(heuristic=heuristic, bounds=(xlim, ylim))
+
+    # Train the tree
+    bsptree.train(lines, parallel=True, backup_folder=backup_folder)
+
+    # bsptree.gen_portals_walls(parallel=False)
+    # bsptree = BSP.load(backup_folder, 'Stage2','final')
+    # bsptree.gen_pvs()
+    # bsptree = BSP.load(backup_folder, 'Stage3', 'final')
 
     # pr.enable()
     # pr.disable()
@@ -129,6 +136,16 @@ def main():
     #     pol = n.polygon
     #     x, y = pol.centroid.x - 15, pol.centroid.y - 15
     #     art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
+    plt.pause(0.1)
+    # plt.show()
+
+    for line in rendered_lines:
+        x, y = line.shapely.xy
+        ax1.plot(x, y, 'g')
+        for point in line.shapely.boundary:
+            x = [point.x, ref_point.x]
+            y = [point.y, ref_point.y]
+            ax1.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.1)
 
     node = bsptree.get_node(18)
@@ -238,11 +255,11 @@ def main():
     #     polygon.plot(color=color)
     #     # x, y = polygon.exterior.xy
     #
-    #     # line.plot(color=color)
-    #     # for point in line.linestring.boundary:
-    #     #     x = [point.x, ref_point.x]
-    #     #     y = [point.y, ref_point.y]
-    #     #     plt.plot(x, y, 'k--', linewidth=0.2)
+    #     line.plot(color=color)
+    #     for point in line.linestring.boundary:
+    #         x = [point.x, ref_point.x]
+    #         y = [point.y, ref_point.y]
+    #         plt.plot(x, y, 'k--', linewidth=0.2)
     #     plt.pause(0.01)
     #     a=2
     # for point in edge_points:

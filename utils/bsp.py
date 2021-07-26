@@ -22,6 +22,7 @@ from .angles import angle_between
 from .geometry import LineSegment, Point, Polygon
 from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
 
+panic = None
 
 class BSPNode:
     """BSP Node class"""
@@ -54,12 +55,12 @@ class BSPNode:
 
 class BSP:
     """Binary Space Partition class, optimally generates BSP tree from a list of line segments by using a heuristic"""
-    def __init__(self, lines=None, heuristic='random', bounds=((0, 800), (0, 800)), parallel=True, backup_folder=None):
+    def __init__(self, heuristic='random', bounds=((0, 800), (0, 800)), backup_folder=None):
         """Constructor, initializes binary tree"""
-        self.parallel = parallel
         self.heuristic = heuristic
-        self.backup_folder = backup_folder
         self.bounds = bounds
+        self.backup_folder = backup_folder
+
         self.node_connectivity: Mapping[int, Mapping[str, int]] = dict()
         self.portal_connections = None
         self.node_pvs = dict()
@@ -69,9 +70,6 @@ class BSP:
         self._portals = dict()
         self._nodes = []
         self._nodes_sorted = False
-
-        if lines:
-            self.generate_tree(lines)
 
     @property
     def root(self) -> [BSPNode]:
@@ -266,6 +264,32 @@ class BSP:
 
         return best_idx
 
+    def train(self, lines, parallel=True, backup_folder=None, start_stage=1, end_stage=3):
+        if backup_folder:
+            self.backup_folder = backup_folder
+
+        if start_stage<1 or start_stage>3:
+            raise ValueError('start_stage should take values between 1-3. Given: start_stage={}'.format(start_stage))
+        if end_stage<1 or end_stage>3:
+            raise ValueError('end_stage should take values between 1-3. Given: end_stage={}'.format(end_stage))
+        if end_stage<start_stage:
+            raise ValueError('end_stage cannot be smaller than start_stage! Given: start_stage={} and end_stage={}'
+                             .format(start_stage, end_stage))
+
+        # Stage 1 - Tree generation
+        if start_stage == 1:
+            self.generate_tree(lines, parallel=parallel)
+
+        # Stage 2 - Portal/Wall generation
+        if end_stage >= 2:
+            if start_stage <= 2:
+                self.gen_portals_walls(parallel=parallel)
+
+        # Stage 3 - PVS generation
+        if end_stage >= 3:
+            if start_stage <= 3:
+                self.gen_pvs(parallel=parallel)
+
     def generate_tree(self, lines, heuristic=None, parallel=None):
         """
         Generates the binary space partition tree recursively using the provided lines and specified heuristic
@@ -281,8 +305,6 @@ class BSP:
         """
 
         print('\nGenerating tree...')
-        if parallel is None:
-            parallel = self.parallel
 
         pool = None
         if parallel:
@@ -396,8 +418,6 @@ class BSP:
     def gen_portals_walls(self, parallel=None, chunk_size=None, backup_folder=None):
 
         print('\nGenerating portals and walls...')
-        if parallel is None:
-            parallel = self.parallel
 
         pool = None
         if parallel:
@@ -572,8 +592,6 @@ class BSP:
 
     def gen_pvs(self, parallel=None, backup_folder=None, chunk_size=5000):
         print('\nGenerating PVS...')
-        if parallel is None:
-            parallel = self.parallel
 
         pool = None
         if parallel:
@@ -609,7 +627,8 @@ class BSP:
 
                     bar.update(len(chunk))
                     last_processed_node_id = chunk[-1]
-                    self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(last_processed_node_id)))
+                    if backup_folder:
+                        self.serialize(os.path.join(backup_folder, 'checkpoint1_{}.pickle'.format(last_processed_node_id)))
                 except KeyboardInterrupt:
                     print('Interrupt handled smoothly...')
                     pool.close()
@@ -619,7 +638,7 @@ class BSP:
 
         else:
             for source_node in tqdm.tqdm(self.empty_leaves):
-                _, source_node_pvs = gen_pvs_single((self, source_node.id))
+                _, source_node_pvs = gen_pvs_single((source_node.id, self.nodes, self._portals, self.node_connectivity))
                 source_node.pvs = np.flatnonzero(source_node_pvs).tolist()
                 source_node.wall_pvs = set()
                 for node_id in source_node.pvs:
@@ -893,7 +912,7 @@ def imap_tqdm(pool, f, inputs, chunksize=None, **tqdm_kwargs):
 def gen_pvs_single(args):
     source_node_id, nodes, portals, node_connectivity = args
     global panic
-    if panic.value:
+    if panic and panic.value:
         # print('Skipping {}...'.format(source_node_id))
         return None, None
     # else:
@@ -915,7 +934,7 @@ def gen_pvs_single(args):
 
 def gen_pvs_chunk(source_node_ids, nodes, portals, node_connectivity):
     global panic
-    if panic.value:
+    if panic and panic.value:
         print('Skipping {}...'.format(source_node_ids))
         return None
     else:
@@ -939,7 +958,7 @@ def gen_pvs_chunk(source_node_ids, nodes, portals, node_connectivity):
 def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, last_portal,
                       nodes, portals, node_connectivity, last_penumbra=None):
     global panic
-    if panic.value:
+    if panic and panic.value:
         # print('Skipping {}...'.format(source_node_ids))
         return
     # Check all portals except the one we are looking through

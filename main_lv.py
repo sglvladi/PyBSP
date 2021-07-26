@@ -127,29 +127,15 @@ def main():
     SHOW_NORMALS = False
     ANNOTATE_LINES = True
 
-    pool = mpp.Pool(mpp.cpu_count())
-
     print('Generating line segments')
     lines, polygons = generate_polygons()
     point1 = generate_ref_point(polygons)
 
-    print('Generating tree')
-    bsptree = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)), pool=pool)
-    print('\nGenerating portals...')
-    bsptree.gen_portals(pool)
-    print('\nGenerating walls...')
-    bsptree.gen_walls(pool)
-    # print('Done')
-    # bsptree1 = BSP(lines, heuristic='min', bounds=((-100, 900), (-100, 900)))
-    print('Generating PVS')
-    bsptree.gen_pvs(pool)
-    # # bsptree = BSP(lines, heuristic='min', bounds=(xlim, ylim))
-    # pickle.dump(bsptree, open('trees/bsp_test_min.p', 'wb'))
-    #
-    # bsptree = pickle.load(open('trees/bsp_test_min.p', 'rb'))
+    # Create BSP tree
+    bsptree = BSP(heuristic='min', bounds=((-100, 900), (-100, 900)),)
 
-    # bsptree.tree.data = copy(lines)
-    # bsptree.generate_tree(bsptree.tree, heuristic='random')
+    # Train the tree
+    bsptree.train(lines, parallel=False)
 
     #plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=True)
@@ -241,7 +227,7 @@ def main():
     # plt.pause(0.1)
     #
     # PLot portals
-    for portal in bsptree._portals:
+    for _, portal in bsptree._portals.items():
         portal.plot(linewidth=3)
     plt.pause(0.1)
     #

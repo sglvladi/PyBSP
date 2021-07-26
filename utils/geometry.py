@@ -212,11 +212,11 @@ class LineSegment:
             num_lines = len(other)
             if not num_lines:
                 return []
-            p1 = np.array([[line.p1.x, line.p1.y] for line in other]) - self.p1.to_array()
+            p1 = np.array([(line.p1.x, line.p1.y) for line in other]) - self.p1.to_array()
             dot1 = np.dot(self.normalV.to_array(), p1.T)
             dot1[abs(dot1)<DoubleTolerance] = 0
 
-            p2 = np.array([[line.p2.x, line.p2.y] for line in other]) - self.p1.to_array()
+            p2 = np.array([(line.p2.x, line.p2.y) for line in other]) - self.p1.to_array()
             dot2 = np.dot(self.normalV.to_array(), p2.T)
             dot2[abs(dot2)<DoubleTolerance] = 0
 

@@ -537,11 +537,35 @@ class BSP:
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'checkpoint4.pickle'))
 
-        # Step 5 - Generate connectivity look-up tables
+        # Step 5 - Refactor portals and walls
+        portal_name_mapping = dict()
+        new_portals = dict()
+        wall_name_mapping = dict()
+        new_walls = dict()
+        for i, (portal_name, portal) in enumerate(tqdm.tqdm(self._portals.items(), desc='Step 5.1')):
+            new_name = str(i)
+            portal_name_mapping[portal_name] = new_name
+            portal.name = new_name
+            new_portals[new_name] = portal
+        for i, (wall_name, wall) in enumerate(tqdm.tqdm(self._walls.items(), desc='Step 5.2')):
+            new_name = str(i)
+            wall_name_mapping[wall_name] = new_name
+            wall.name = new_name
+            new_walls[new_name] = wall
+        for node in tqdm.tqdm(empty_leaves, desc='Step 5.3'):
+            node.portals = [portal_name_mapping[portal_name] for portal_name in node.portals]
+            node.walls = [wall_name_mapping[wall_name] for wall_name in node.walls]
+        self._portals = new_portals
+        self._walls = new_walls
+
+        if backup_folder:
+            self.serialize(os.path.join(backup_folder, 'checkpoint5.pickle'))
+
+        # Step 6 - Generate connectivity look-up tables
         if pool:
             portal_names = [portal_name for portal_name in self._portals]
             results_chunks = imap_tqdm_chunk(pool, process_portal_connections, portal_names, (empty_leaves,),
-                                             chunksize=chunk_size, desc='Step 5')
+                                             chunksize=chunk_size, desc='Step 6')
             portal_connections_list = [item for chunk in results_chunks for item in chunk] # Unpack chunks
             self.portal_connections = {item[0]: item[1] for item in portal_connections_list}
             self.node_connectivity = {node.id: dict() for node in empty_leaves}

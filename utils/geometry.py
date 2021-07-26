@@ -125,12 +125,15 @@ class Vector:
 
 class LineSegment:
     """2D line segment class"""
-    def __init__(self, p1, p2, normal=1, name='', linestring=None):
+    def __init__(self, p1, p2, normal=1, name=None, linestring=None):
         """Arguments: p1 (type: Point), p2 (type: Point), normal (type: Int), name (type: String),
         arg 'normal' represents one of two possible directions of normal vector of our line segment, arg 'name
         is any arbitrary name for the purpose of identifying nodes when printing binary trees"""
         self.p1 = p1
         self.p2 = p2
+        self.id = None
+        self.sub = None
+        self._name = None
         self.name = name
 
         Dx = p2.x - p1.x
@@ -151,6 +154,22 @@ class LineSegment:
 
     def __hash__(self):
         return hash(self.name)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if value:
+            if '_' in value:
+                idx = value.index('_')
+                self.id = int(value[:idx])
+                self.sub_name = value[idx:]
+            else:
+                self.id = int(value)
+                self.sub_name = ''
+        self._name = value
 
     @property
     def points(self):

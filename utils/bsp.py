@@ -1,6 +1,8 @@
+import datetime
 import os.path
 import pickle
 import signal
+import random
 from copy import copy
 import multiprocessing as mpp
 from collections.abc import Mapping
@@ -207,21 +209,20 @@ class BSP:
         min_idx = 0
         if pool:
             inputs = [(idx, line, lines) for idx, line in enumerate(lines)]
-            mins = imap_tqdm(pool, min_partitions, inputs)
-            mins_0 = [m[0] for m in mins]
-            mins_1 = [m[1] for m in mins]
-            min_idx_tmp = np.argmin(mins_1)
-            min_idx = mins_0[min_idx_tmp]
+            mins = imap_tqdm(pool, min_partitions, inputs, chunksize=None)
+            mins_idx = [m[0] for m in mins]
+            mins_val = [m[1] for m in mins]
+            min_idx_tmp = np.argmin(mins_val)
+            min_idx = mins_idx[min_idx_tmp]
         else:
             min_partition = np.inf
             for idx1, line1 in enumerate(tqdm.tqdm(lines)):
-                partition_count = 0
-                for idx2, line2 in enumerate(lines):
-                    # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
-                    if idx1 != idx2:
-                        res = line1.compare(line2)
-                        if res == 'P':
-                            partition_count += 1
+                if len(lines) > 1000:
+                    samples = random.sample(lines, 1000)
+                else:
+                    samples = lines
+                results = np.array(line1.compare(samples))
+                partition_count = np.sum(results == 'P')
 
                 if partition_count < min_partition:
                     min_partition = partition_count
@@ -879,11 +880,12 @@ def imap_tqdm_chunk(pool, f, inputs, batch_inputs, chunksize=None, **tqdm_kwargs
     return list(tqdm.tqdm(pool.imap_unordered(f, inputs, chunksize=p_chunksize), total=len(inputs), **tqdm_kwargs))
 
 
-def imap_tqdm(pool, f, inputs, **tqdm_kwargs):
+def imap_tqdm(pool, f, inputs, chunksize=None, **tqdm_kwargs):
     # Calculation of chunksize taken from pool._map_async
-    chunksize, extra = divmod(len(inputs), len(pool._pool) * 4)
-    if extra:
-        chunksize += 1
+    if not chunksize:
+        chunksize, extra = divmod(len(inputs), len(pool._pool) * 4)
+        if extra:
+            chunksize += 1
     results = list(tqdm.tqdm(pool.imap_unordered(f, inputs, chunksize=chunksize), total=len(inputs), **tqdm_kwargs))
     return results
 
@@ -1028,17 +1030,12 @@ def compute_anti_penumbra2(source, target):
 # def min_partitions(idx, line, lines):
 def min_partitions(args):
     idx, line, lines = args
-    partition_count = 0
-    # if len(lines) > 1000:
-    #     samples = random.sample(lines, 1000)
-    # else:
-    samples = lines
-    for idx2, line2 in enumerate(samples):
-        # print("{}|{} out of {}".format(idx1, idx2, len(lines)))
-        if idx != idx2:
-            res = line.compare(line2)
-            if res == 'P':
-                partition_count += 1
+    if len(lines) > 1000:
+        samples = random.sample(lines, 1000)
+    else:
+        samples = lines
+    results = np.array(line.compare(samples))
+    partition_count = np.sum(results == 'P')
     # print('Done {}'.format(idx))
     return idx, partition_count
 

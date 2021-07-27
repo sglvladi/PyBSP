@@ -20,13 +20,13 @@ from stonesoup.functions import pol2cart
 
 from .angles import angle_between
 from .geometry import LineSegment, Point, Polygon
-from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2
+from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2, remove_artists
 
 panic = None
 
 class BSPNode:
     """BSP Node class"""
-    def __init__(self, data=None, parent=None, polygon=None, plane=None, id=None):
+    def __init__(self, data=None, parent=None, polygon=None, plane=None, id=None, is_front_child=None):
         """Constructor, declares variables for left and right sub-tree and data for the current node"""
         self.parent = parent
         self.front = None
@@ -39,6 +39,7 @@ class BSPNode:
         self.pvs = set()
         self.wall_pvs = set()
         self.id = id
+        self._is_front_child = is_front_child
 
     def __repr__(self):
         return "BSPNode(id={}, data={}, left={}, right={})".format(self.id, self.data, self.front, self.back)
@@ -51,6 +52,26 @@ class BSPNode:
 
     def __hash__(self):
         return hash(self.id)
+
+    @property
+    def is_leaf(self):
+        return self.front is None and self.back is None
+
+    @property
+    def is_root(self):
+        return self.parent is None
+
+    @property
+    def is_solid(self):
+        if self.is_leaf and not self._is_front_child:
+            return True
+        return False
+
+    @property
+    def is_empty(self):
+        if self.is_leaf and self._is_front_child:
+            return True
+        return False
 
 
 class BSP:
@@ -381,14 +402,32 @@ class BSP:
             result = line.compare(line2)
             if result == 'P':
                 split_lines = line.split(line2)
-                for split_line in split_lines:
-                    res = line.compare(split_line)
-                    if res == 'F':
-                        data_front.append(split_line)
-                    elif res == 'B':
-                        data_back.append(split_line)
-                    else:
-                        print('Error!!', res)
+                res = np.array(line.compare(split_lines))
+                back_idx = np.flatnonzero(res == 'B')
+                front_idx = np.flatnonzero(res == 'F')
+                # This is necessary because sometimes, even after splitting, one of the lines will still return 'P'
+                if len(back_idx) and len(front_idx):
+                    front_idx = front_idx[0]
+                    back_idx = back_idx[0]
+                elif not len(back_idx):
+                    front_idx = front_idx[0]
+                    back_idx = not front_idx
+                elif not len(front_idx):
+                    back_idx = back_idx[0]
+                    front_idx = not back_idx
+                else:
+                    print('Error!!!')
+                data_front.append(split_lines[front_idx])
+                data_back.append(split_lines[back_idx])
+
+                # for split_line in split_lines:
+                #     res = line.compare(split_line)
+                #     if res == 'F':
+                #         data_front.append(split_line)
+                #     elif res == 'B':
+                #         data_back.append(split_line)
+                #     else:
+                #         print('Error!!', res)
             elif result == 'C':
                 data.append(line2)
             elif result == 'F':
@@ -400,7 +439,7 @@ class BSP:
         node.data = data
         if not len(data_front):
             data_front = None
-        node_front = BSPNode(data_front, parent=node.id, polygon=pol_left, id=len(self._nodes))
+        node_front = BSPNode(data_front, parent=node.id, polygon=pol_left, id=len(self._nodes), is_front_child=True)
         self._nodes.append(node_front)
         node.front = node_front.id
         if data_front:
@@ -409,7 +448,7 @@ class BSP:
         # Generate back node
         if not len(data_back):
             data_back = None
-        node_back = BSPNode(data_back, parent=node.id, polygon=pol_right, id=len(self._nodes))
+        node_back = BSPNode(data_back, parent=node.id, polygon=pol_right, id=len(self._nodes), is_front_child=False)
         self._nodes.append(node_back)
         node.back = node_back.id
         if data_back:
@@ -457,12 +496,28 @@ class BSP:
                     self.nodes[node.back].portals.append(p.name)
                 elif res == 'P':
                     lines = node.plane.split(p)
-                    if node.plane.compare(lines[0]) == 'F':
-                        self.nodes[node.front].portals.append(lines[0].name)
-                        self.nodes[node.back].portals.append(lines[1].name)
+                    res = np.array(node.plane.compare(lines))
+                    back_idx = np.flatnonzero(res == 'B')
+                    front_idx = np.flatnonzero(res == 'F')
+                    # This is necessary because sometimes, even after splitting, one of the lines will still return 'P'
+                    if len(back_idx) and len(front_idx):
+                        front_idx = front_idx[0]
+                        back_idx = back_idx[0]
+                    elif not len(back_idx):
+                        front_idx = front_idx[0]
+                        back_idx = not front_idx
+                    elif not len(front_idx):
+                        back_idx = back_idx[0]
+                        front_idx = not back_idx
                     else:
-                        self.nodes[node.back].portals.append(lines[0].name)
-                        self.nodes[node.front].portals.append(lines[1].name)
+                        print('Error!!!')
+                    self.nodes[node.front].portals.append(lines[front_idx].name)
+                    self.nodes[node.back].portals.append(lines[back_idx].name)
+                    # if node.plane.compare(lines[0]) == 'F':
+                    #
+                    # else:
+                    #     self.nodes[node.back].portals.append(lines[0].name)
+                    #     self.nodes[node.front].portals.append(lines[1].name)
 
                     parts = p.name.split('_')
                     it = 0
@@ -537,26 +592,26 @@ class BSP:
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'checkpoint4.pickle'))
 
-        # Step 5 - Refactor portals and walls
-        portal_name_mapping = dict()
-        new_portals = dict()
-        wall_name_mapping = dict()
-        new_walls = dict()
-        for i, (portal_name, portal) in enumerate(tqdm.tqdm(self._portals.items(), desc='Step 5.1')):
-            new_name = str(i)
-            portal_name_mapping[portal_name] = new_name
-            portal.name = new_name
-            new_portals[new_name] = portal
-        for i, (wall_name, wall) in enumerate(tqdm.tqdm(self._walls.items(), desc='Step 5.2')):
-            new_name = str(i)
-            wall_name_mapping[wall_name] = new_name
-            wall.name = new_name
-            new_walls[new_name] = wall
-        for node in tqdm.tqdm(empty_leaves, desc='Step 5.3'):
-            node.portals = [portal_name_mapping[portal_name] for portal_name in node.portals]
-            node.walls = [wall_name_mapping[wall_name] for wall_name in node.walls]
-        self._portals = new_portals
-        self._walls = new_walls
+        # # Step 5 - Refactor portals and walls
+        # portal_name_mapping = dict()
+        # new_portals = dict()
+        # wall_name_mapping = dict()
+        # new_walls = dict()
+        # for i, (portal_name, portal) in enumerate(tqdm.tqdm(self._portals.items(), desc='Step 5.1')):
+        #     new_name = str(i)
+        #     portal_name_mapping[portal_name] = new_name
+        #     portal.name = new_name
+        #     new_portals[new_name] = portal
+        # for i, (wall_name, wall) in enumerate(tqdm.tqdm(self._walls.items(), desc='Step 5.2')):
+        #     new_name = str(i)
+        #     wall_name_mapping[wall_name] = new_name
+        #     wall.name = new_name
+        #     new_walls[new_name] = wall
+        # for node in tqdm.tqdm(empty_leaves, desc='Step 5.3'):
+        #     node.portals = [portal_name_mapping[portal_name] for portal_name in node.portals]
+        #     node.walls = [wall_name_mapping[wall_name] for wall_name in node.walls]
+        # self._portals = new_portals
+        # self._walls = new_walls
 
         if backup_folder:
             self.serialize(os.path.join(backup_folder, 'checkpoint5.pickle'))
@@ -616,6 +671,7 @@ class BSP:
 
     def gen_pvs(self, parallel=None, backup_folder=None, chunk_size=5000):
         print('\nGenerating PVS...')
+        # gen_pvs_single((4200, self.nodes, self._portals, self.node_connectivity))
 
         pool = None
         if parallel:
@@ -637,8 +693,9 @@ class BSP:
             for i, chunk in enumerate(chunks):
                 inputs = [(id, self.nodes, self._portals, self.node_connectivity) for id in chunk]
                 try:
-                    results = imap_tqdm(pool, gen_pvs_single, inputs, position=1,
-                                        desc='Chunk {}/{}'.format(i+1, len(chunks)))
+                    inputs = tqdm.tqdm(inputs, desc='Chunk {}/{} (Queued)'.format(i+1, len(chunks)))
+                    results = imap_tqdm(pool, gen_pvs_single, inputs, position=2,
+                                        desc='Chunk {}/{} (Processed)'.format(i+1, len(chunks)))
                     self._processed_pvs[chunk] = True
 
                     for res in results:
@@ -944,8 +1001,14 @@ def gen_pvs_single(args):
     source_node = nodes[source_node_id]
     source_node.pvs = np.zeros((len(nodes),), dtype=bool)
     source_node.pvs[source_node_id] = True
+    filename = f'logs/pvs/processing/{os.getpid()}-{source_node_id}.txt'
+    done_filename = f'logs/pvs/done/{source_node_id}.txt'
+    file = open(filename, 'wt').close()
     for source_portal_name in source_node.portals:
+        # file.write(f'[{datetime.datetime.now()}]: Source portal: {source_portal_name}\n')
+        # file.write('======================================================\n')
         source_portal = portals[source_portal_name]
+        # a = source_portal.plot(color='m')
         target_node = nodes[node_connectivity[source_node.id][source_portal_name]]
         source_node.pvs[target_node.id] = True
         target_portals = [portals[p_name] for p_name in target_node.portals]
@@ -953,6 +1016,17 @@ def gen_pvs_single(args):
             continue
         gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal, nodes, portals,
                           node_connectivity)
+    # print(f'Finished node: {source_node_id}')
+    # file.write(f'~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ END - {datetime.datetime.now()} ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    with open(filename, 'wt') as f:
+        pvs = np.flatnonzero(source_node.pvs).tolist()
+        wall_pvs = set()
+        for node_id in source_node.pvs:
+            node = nodes[node_id]
+            wall_pvs |= set(node.walls)
+        f.write('{}\n'.format(', '.join(str(n) for n in pvs)))
+        f.write('{}\n'.format(', '.join(wall_pvs)))
+    os.replace(filename, done_filename)
     return source_node_id, source_node.pvs
 
 
@@ -964,10 +1038,13 @@ def gen_pvs_chunk(source_node_ids, nodes, portals, node_connectivity):
     else:
         print('Running {}'.format(source_node_ids))
     for source_node_id in source_node_ids:
+        file = open(f'logs/pvs/{source_node_id}.txt','wt')
         source_node = nodes[source_node_id]
         source_node.pvs = np.zeros((len(nodes),), dtype=bool)
         source_node.pvs[source_node_id] = True
         for source_portal_name in source_node.portals:
+            # file.write(f'[{datetime.datetime.now()}]: Source portal: {source_portal_name}\n')
+            # file.write('======================================================\n')
             source_portal = portals[source_portal_name]
             target_node = nodes[node_connectivity[source_node.id][source_portal_name]]
             source_node.pvs[target_node.id] = True
@@ -975,24 +1052,27 @@ def gen_pvs_chunk(source_node_ids, nodes, portals, node_connectivity):
             if source_portal.shapely.length < 1.0:
                 continue
             gen_pvs_recursive(source_node, target_node, source_portal, target_portals, source_portal, nodes, portals,
-                              node_connectivity)
+                              node_connectivity, file=file)
+        # file.write('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ END ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        file.close()
         return source_node_id, source_node.pvs
 
 
 def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, last_portal,
-                      nodes, portals, node_connectivity, last_penumbra=None):
+                      nodes, portals, node_connectivity, last_penumbra=None, file=None):
+
     global panic
     if panic and panic.value:
         # print('Skipping {}...'.format(source_node_ids))
         return
     # Check all portals except the one we are looking through
-    for target_portal in set(target_portals) - {last_portal}:
-        if target_portal.shapely.length < 1.0 or source_portal.compare(target_portal) == 'C':
+    valid_target_portals = list(set(target_portals) - {last_portal})
+    # valid_target_portals.sort(key=lambda x: x.name)
+    for target_portal in valid_target_portals:
+        # file.write(f'[{datetime.datetime.now()}]: {target_portal.name}\n')
+        if target_portal.shapely.length < 50.0 or source_portal.compare(target_portal) == 'C':
             continue
         dest_node = nodes[node_connectivity[current_node.id][target_portal.name]]
-
-        # Add destination node to source node's pvs
-        source_node.pvs[dest_node.id] = True
 
         penumbra = compute_anti_penumbra2(last_portal, target_portal)
         if not penumbra.shapely.is_valid:
@@ -1002,7 +1082,10 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
             if isinstance(intersection, GeometryCollection):
                 if intersection.is_empty:
                     continue
-                intersection = next(p for p in intersection if isinstance(p, ShapelyPolygon))
+                intersectioni = next((p for p in intersection if isinstance(p, ShapelyPolygon)), None)
+                if not intersectioni or intersectioni.area < 1:
+                    continue
+                intersection = intersectioni
             elif isinstance(intersection, MultiPolygon):
                 # TODO: Need to handle this!!!!
                 continue
@@ -1014,10 +1097,14 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
         if not penumbra.shapely.is_valid:
             continue
 
+        # Add destination node to source node's pvs
+        source_node.pvs[dest_node.id] = True
+
         dest_portals = []
         # Check all portals, except the one we are looking through
-        p_names = set(dest_node.portals) - {target_portal.name}
-        valid_destination_portals = set([portals[p_name] for p_name in p_names]) - {target_portal}
+        p_names = list(set(dest_node.portals) - {target_portal.name})
+        # p_names.sort()
+        valid_destination_portals = [portals[p_name] for p_name in p_names]
         for dest_portal in valid_destination_portals:
             # If the destination portal is collinear to the target or source portals, then we can not see the node
             # it leads to (at least not through the target node)
@@ -1028,7 +1115,7 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
                 continue
 
             ls = dest_portal.shapely.intersection(penumbra.shapely)
-            if not ls or not isinstance(ls, LineString) or ls.length < 1.:
+            if not ls or not isinstance(ls, LineString) or ls.length < 50.:
                 continue
 
             dest_portal = LineSegment.from_linestring(ls, name=dest_portal.name)
@@ -1037,7 +1124,7 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
 
         if len(dest_portals):
             gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals, target_portal, nodes,
-                              portals, node_connectivity, penumbra)
+                              portals, node_connectivity, penumbra, file=file)
 
 
 def cut_polygon_by_line(polygon, line):

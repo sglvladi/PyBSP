@@ -4,9 +4,9 @@ from shapely.geometry import Polygon
 
 import multiprocessing as mpp
 
-from utils.bsp import BSP
-from utils.geometry import LineSegment, Point
-from utils.functions import sort_fovs, plot_nodes
+from pybsp.bsp import BSP
+from pybsp.geometry import LineSegment, Point
+from pybsp.utils import sort_fovs, plot_nodes
 
 import pickle
 import cProfile as profile

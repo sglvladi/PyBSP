@@ -9,10 +9,10 @@ import pickle
 import multiprocessing as mpp
 
 
-from utils.functions import plot_nodes, sort_fovs
-from utils.bsp import BSP
-from utils.geometry import LineSegment, Point, Polygon
-from utils.geo import load_target_lines, get_merc_limits
+from pybsp.utils import plot_nodes, sort_fovs
+from pybsp.bsp import BSP
+from pybsp.geometry import LineSegment, Point, Polygon
+from pybsp.geo import load_target_lines, get_merc_limits
 
 import sys
 

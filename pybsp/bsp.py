@@ -20,7 +20,7 @@ from stonesoup.functions import pol2cart
 
 from .angles import angle_between
 from .geometry import LineSegment, Point, Polygon
-from .functions import extrapolate_line, merge_lines, process_line, merge_fovs2, remove_artists
+from .utils import extrapolate_line, merge_lines, process_line, merge_fovs2, remove_artists
 
 panic = None
 

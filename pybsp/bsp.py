@@ -1001,8 +1001,8 @@ def gen_pvs_single(args):
     source_node = nodes[source_node_id]
     source_node.pvs = np.zeros((len(nodes),), dtype=bool)
     source_node.pvs[source_node_id] = True
-    filename = f'logs/pvs/processing/{os.getpid()}-{source_node_id}.txt'
-    done_filename = f'logs/pvs/done/{source_node_id}.txt'
+    filename = f'../data/logs/pvs/processing/{os.getpid()}-{source_node_id}.txt'
+    done_filename = f'../data/logs/pvs/done/{source_node_id}.txt'
     file = open(filename, 'wt').close()
     for source_portal_name in source_node.portals:
         # file.write(f'[{datetime.datetime.now()}]: Source portal: {source_portal_name}\n')

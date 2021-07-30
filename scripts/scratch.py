@@ -31,10 +31,10 @@ def main():
     SHOW_PLANES = True
     TARGET = "MALTA"
     heuristic = 'min'
-    backup_folder = 'trees/{}_{}'.format(TARGET, heuristic).lower()
+    backup_folder = '../data/trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
     if val:
-        backup_folder = 'trees/{}'.format(val)
+        backup_folder = '../data/trees/{}'.format(val)
     print(backup_folder)
 
     # Load lines

@@ -113,7 +113,7 @@ def get_merc_target_polygon(target):
 def load_target_polygons(target):
     dirname = os.path.dirname(__file__)
     polygons_filename = 'polygons.p'
-    polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'shapefiles', polygons_filename))
+    polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles', polygons_filename))
     polygons = pickle.load(open(polygons_filepath, 'rb'))
     target_polygon = get_merc_target_polygon(target)
     target_polygons = []
@@ -126,7 +126,7 @@ def load_target_polygons(target):
 def load_target_lines(target):
     dirname = os.path.dirname(__file__)
     filename = '{}.p'.format(target)
-    filepath = os.path.abspath(os.path.join(dirname, '..', 'shapefiles/lines', filename))
+    filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles/lines', filename))
     if os.path.exists(filepath):
         print('[INFO]: Loading target lines from file...', end='')
         lines = pickle.load(open(filepath, 'rb'))
@@ -135,7 +135,7 @@ def load_target_lines(target):
     else:
         print('[INFO]: No lines backup file found. Proceeding to generating lines...')
         polygons_filename = 'merged_polygons.p'
-        polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'shapefiles', polygons_filename))
+        polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles', polygons_filename))
         polygons = pickle.load(open(polygons_filepath, 'rb'))
         target_polygon = get_merc_target_polygon(target)
         lines = []

@@ -1,0 +1,13 @@
+name: pybsp
+channels:
+  - conda-forge
+  - default
+dependencies:
+  - python=3.8
+  - shapely
+  - networkx
+  - tqdm
+  - stonesoup
+  - numpy
+  - pyshp
+  - matplotlib

@@ -85,8 +85,8 @@ class Point:
 
         """
         dot = np.dot(line.normalV.to_array(), self.to_array() - line.mid_point.to_array())
-        if dot == 0:
-            return dot
+        if abs(dot) < DoubleTolerance:
+            return 0
         return dot / abs(dot)
 
     def to_polar(self, ref=None):
@@ -103,6 +103,13 @@ class Point:
 
         return p1
 
+    def plot(self, format=None, ax=None, **kwargs):
+        if not format:
+            format = 'o'
+        if ax:
+            return ax.plot(self.x, self.y, format, **kwargs)[0]
+        else:
+            return plt.plot(self.x, self.y, format, **kwargs)[0]
 
 class Vector:
     """A quite basic 2D vector class"""

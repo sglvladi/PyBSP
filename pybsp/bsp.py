@@ -6,7 +6,9 @@ import random
 from copy import copy
 import multiprocessing as mpp
 from collections.abc import Mapping
+from itertools import product
 
+import shapely.errors
 import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -417,8 +419,15 @@ class BSP:
                     front_idx = not back_idx
                 else:
                     print('Error!!!')
-                data_front.append(split_lines[front_idx])
-                data_back.append(split_lines[back_idx])
+
+                # Necessary because sometimes result is 'P' but produced line has length of 0
+                if not split_lines[front_idx].shapely.length:
+                    data_back.append(line2)
+                elif not split_lines[back_idx].shapely.length:
+                    data_front.append(line2)
+                else:
+                    data_front.append(split_lines[front_idx])
+                    data_back.append(split_lines[back_idx])
 
                 # for split_line in split_lines:
                 #     res = line.compare(split_line)
@@ -877,8 +886,8 @@ class BSP:
                 if len(fov) == 1 and fov[0].delta == np.pi:
                     break
             else:
-                w_pvs_names = set([line.name.split('_')[0] for line in leaf.wall_pvs])
-                if line.name.split('_')[0] in w_pvs_names:
+                w_pvs_names = set([line.split('_')[0] for line in leaf.wall_pvs])
+                if str(line.id) in w_pvs_names:
                     fov, vis_lines = process_line(line, fov, vis_lines, ref_point, ax)
                     fov = merge_fovs2(fov)
                     if len(fov) == 1 and fov[0].delta == np.pi:
@@ -964,6 +973,63 @@ class BSP:
             return pickle.load(open(filepath, 'rb'))
         else:
             return pickle.load(open(path, 'rb'))
+
+    def check_los(self, p1, p2):
+        if self.find_leaf(p1).is_solid or self.find_leaf(p2).is_solid:
+            return False
+        ray = LineSegment(p1, p2)
+        node_stack = [self.root]
+        i=0
+        while len(node_stack):
+            node = node_stack.pop()
+            node_front = None
+            if node.front:
+                node_front = self.nodes[node.front]
+            node_back = None
+            if node.back:
+                node_back = self.nodes[node.back]
+            result = node.data[0].compare(ray)
+            if result == 'P':
+                res = np.array(ray.compare(node.data))
+                if np.any(res == 'P'):
+                    return False
+                else:
+                    if not node_front.is_leaf:
+                        node_stack.append(node_front)
+                    if not node_back.is_leaf:
+                        node_stack.append(node_back)
+            elif result == 'F':
+                if not node_front.is_leaf:
+                    node_stack.append(node_front)
+            elif result == 'B':
+                if not node_back.is_leaf:
+                    node_stack.append(node_back)
+            i+=1
+        return True
+
+    def check_pvs(self, node1, node2):
+        distance_delta = 10
+        for portal_name1, portal_name2 in product(node1.portals, node2.portals):
+            portal1 = self._portals[portal_name1]
+            portal2 = self._portals[portal_name2]
+            points1 = self._get_points_from_portal2(portal1, distance_delta)
+            points2 = self._get_points_from_portal2(portal2, distance_delta)
+            for point1, point2 in product(points1, points2):
+                if self.check_los(point1, point2):
+                    self.check_los(point1, point2)
+                    return True
+        return False
+
+    def _get_points_from_portal(self, portal, distance_delta=50):
+        distances = np.arange(0, portal.shapely.length, distance_delta)
+        points = [portal.shapely.interpolate(distance) for distance in distances] + [portal.shapely.boundary[1]]
+        return [Point(p.x, p.y) for p in points]
+
+    def _get_points_from_portal2(self, portal, num_points=50):
+        distances = np.linspace(0, portal.shapely.length, num_points)
+        points = [portal.shapely.interpolate(distance) for distance in distances]
+        return [Point(p.x, p.y) for p in points]
+
 
 
 # //////////////////////////////////////////////////////////////////////
@@ -1078,7 +1144,10 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
         if not penumbra.shapely.is_valid:
             continue
         if last_penumbra:
-            intersection = last_penumbra.shapely.intersection(penumbra.shapely)
+            try:
+                intersection = last_penumbra.shapely.intersection(penumbra.shapely)
+            except shapely.errors.TopologicalError:
+                continue
             if isinstance(intersection, GeometryCollection):
                 if intersection.is_empty:
                     continue
@@ -1114,7 +1183,10 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
             if not penumbra.shapely.intersects(dest_portal.shapely):
                 continue
 
-            ls = dest_portal.shapely.intersection(penumbra.shapely)
+            try:
+                ls = dest_portal.shapely.intersection(penumbra.shapely)
+            except shapely.errors.TopologicalError:
+                continue
             if not ls or not isinstance(ls, LineString) or ls.length < 50.:
                 continue
 

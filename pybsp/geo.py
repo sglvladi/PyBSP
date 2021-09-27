@@ -75,7 +75,14 @@ LIMITS = {
         "LAT_MIN": 36,
         "LAT_MAX": 36.1,
         "RES": 'h'
-    }
+    },
+    'PALMA': {
+        "LON_MIN": 2.078508,
+        "LON_MAX": 4.679459,
+        "LAT_MIN": 39.057584,
+        "LAT_MAX": 40.069665,
+        "RES": 'h'
+    },
 }
 
 
@@ -123,7 +130,7 @@ def load_target_polygons(target):
     return target_polygons
 
 
-def load_target_lines(target):
+def load_target_lines(target, polygons_filename='merged_polygons.p'):
     dirname = os.path.dirname(__file__)
     filename = '{}.p'.format(target)
     filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles/lines', filename))
@@ -134,13 +141,12 @@ def load_target_lines(target):
         return lines
     else:
         print('[INFO]: No lines backup file found. Proceeding to generating lines...')
-        polygons_filename = 'merged_polygons.p'
         polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles', polygons_filename))
         polygons = pickle.load(open(polygons_filepath, 'rb'))
         target_polygon = get_merc_target_polygon(target)
         lines = []
         for polygon in polygons:
-            if target_polygon.shapely.contains(polygon):
+            if target == 'GLOBAL' or target_polygon.shapely.contains(polygon):
                 x, y = polygon.exterior.xy
 
                 points = []
@@ -156,8 +162,11 @@ def load_target_lines(target):
                     p2 = points[j]
                     p11 = (p1.x, p1.y)
                     p22 = (p2.x, p2.y)
-                    if p11 != p22:
-                        lines.append(LineSegment(p1, p2, -1, str(len(lines))))
+                    line = LineSegment(p1, p2, -1, str(len(lines)))
+                    if p11 != p22 and line.shapely.length > 0:
+                        lines.append(line)
+                    else:
+                        a=2
         print('[INFO]: Saving lines backup file {}...'.format(filepath))
         pickle.dump(lines, open(filepath, 'wb'))
         return lines

@@ -9,7 +9,7 @@ import pickle
 import multiprocessing as mpp
 
 
-from pybsp.utils import plot_nodes, sort_fovs
+from pybsp.utils import plot_nodes, sort_fovs, remove_artists
 from pybsp.bsp import BSP
 from pybsp.geometry import LineSegment, Point, Polygon
 from pybsp.geo import load_target_lines, get_merc_limits
@@ -17,7 +17,7 @@ from pybsp.geo import load_target_lines, get_merc_limits
 import sys
 
 sys.setrecursionlimit(10000000)
-seed = np.random.randint(10000000)
+seed = 10000 # np.random.randint(10000000)
 np.random.seed(seed)
 
 
@@ -29,7 +29,7 @@ def generate_ref_point():
 
 def main():
     SHOW_PLANES = True
-    TARGET = "MALTA"
+    TARGET = "GLOBAL"
     heuristic = 'min'
     backup_folder = '../data/trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
@@ -38,7 +38,7 @@ def main():
     print(backup_folder)
 
     # Load lines
-    lines = load_target_lines(TARGET)
+    lines = load_target_lines(TARGET, 'oversimplified_merged_polygons.p')
 
     # Generate Reference point
     ref_point = generate_ref_point()
@@ -71,16 +71,19 @@ def main():
     # res2 = [line.compare2(l) for l in lines]
     # print(datetime.datetime.now() - now)
 
-    # Create BSP tree
-    bsptree = BSP(heuristic=heuristic, bounds=(xlim, ylim))
-
-    # Train the tree
-    bsptree.train(lines, parallel=True, backup_folder=backup_folder)
+    # # Create BSP tree
+    # bsptree = BSP(heuristic=heuristic, bounds=(xlim, ylim))
+    #
+    # # Train the tree
+    # bsptree.train(lines, parallel=True, backup_folder=backup_folder)
 
     # bsptree.gen_portals_walls(parallel=False)
     # bsptree = BSP.load(backup_folder, 'Stage2','final')
+    # # Train the tree
+    # bsptree.train(lines, parallel=True, backup_folder=backup_folder, start_stage=3)
     # bsptree.gen_pvs()
-    # bsptree = BSP.load(backup_folder, 'Stage3', 'final')
+    bsptree = BSP.load(backup_folder, 'Stage3', 'final')
+
 
     # pr.enable()
     # pr.disable()
@@ -92,10 +95,10 @@ def main():
     # bsptree = pickle.load(open('trees/bsp_{}_{}_full.p'.format(TARGET, heuristic), 'rb'))
 
     # Plot tree graph
-    fig2 = plt.figure(figsize=(8, 6))
-    ax2 = fig2.add_subplot(111)
-    bsptree.draw_nx(ax=ax2, show_labels=True)
-    plt.pause(0.01)
+    # fig2 = plt.figure(figsize=(8, 6))
+    # ax2 = fig2.add_subplot(111)
+    # bsptree.draw_nx(ax=ax2, show_labels=True)
+    # plt.pause(0.01)
 
     if SHOW_PLANES:
         ls = []
@@ -107,11 +110,45 @@ def main():
     ax1.plot(ref_point.x, ref_point.y, 'ko')
     plt.pause(0.01)
 
+    # n1 = bsptree.empty_leaves[0]
+    # for n2 in bsptree.empty_leaves[1:]:
+    #     arts = [n1.polygon.plot(color='b', ax=ax1), n2.polygon.plot(color='r', ax=ax1)]
+    #     now = datetime.datetime.now()
+    #     res = bsptree.check_pvs(n1, n2)
+    #     dt = datetime.datetime.now() - now
+    #     ax1.set_title(dt.total_seconds())
+    #     plt.pause(0.01)
+    #     remove_artists(arts)
+    #
+    # points = []
+    # for leaf in bsptree.empty_leaves:
+    #     x, y = leaf.polygon.shapely.centroid.x, leaf.polygon.shapely.centroid.y
+    #     p = Point(x, y)
+    #     points.append(p)
+    #
+    # for p in points:
+    #     p.plot('or', ax=ax1)
+    #
+    # plt.pause(0.01)
+    #
+    # p1 = points[0]
+    # for point in points[1:]:
+    #     l = LineSegment(p1, point)
+    #     arts = [p1.plot('bo', ax=ax1), point.plot('bo', ax=ax1)]
+    #     now = datetime.datetime.now()
+    #     res = bsptree.check_los(p1, point)
+    #     dt = datetime.datetime.now()-now
+    #     color = 'g' if res else 'r'
+    #     arts.append(l.plot(linestyle='--', color=color, ax=ax1))
+    #     ax1.set_title(dt.total_seconds())
+    #     plt.pause(0.01)
+    #     remove_artists(arts)
+
     print("Rendering...", end='')
     # pr.enable()
     # rendered_lines = plot_visibility2(bsptree, ref_point, plt.gca())
     now = datetime.datetime.now()
-    rendered_lines = bsptree.render(ref_point, use_pvs=False)
+    rendered_lines = bsptree.render(ref_point, use_pvs=True)
     print(datetime.datetime.now()-now)
     # now = datetime.datetime.now()
     # rendered_lines = bsptree.render(ref_point, use_pvs=True)
@@ -119,24 +156,24 @@ def main():
     # pr.disable()
     print("done")
 
-    node = bsptree.find_leaf(ref_point)
-    # node = bsptree.get_node(180)
-    pvs = [bsptree.nodes[n] for n in node.pvs]
-    wall_pvs = [bsptree.get_wall(w) for w in node.wall_pvs]
-    art = plot_nodes(pvs, ax=ax1)
-    pol = node.polygon
-    art.append(pol.plot(color='r', ax=ax1))
-    x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
-    art.append(ax1.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
-    for line in wall_pvs:
-        art.append(line.plot(color='r', ax=ax1))
-    # for n in bsptree.empty_leaves:
-    #     if n in pvs or node == n:
-    #         continue
-    #     pol = n.polygon
-    #     x, y = pol.centroid.x - 15, pol.centroid.y - 15
-    #     art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
-    plt.pause(0.1)
+    # node = bsptree.find_leaf(ref_point)
+    # # node = bsptree.get_node(180)
+    # pvs = [bsptree.nodes[n] for n in node.pvs]
+    # wall_pvs = [bsptree.get_wall(w) for w in node.wall_pvs]
+    # art = plot_nodes(pvs, ax=ax1)
+    # pol = node.polygon
+    # art.append(pol.plot(color='r', ax=ax1))
+    # x, y = pol.shapely.centroid.x - 15, pol.shapely.centroid.y - 15
+    # art.append(ax1.text(x, y, node.id, color='w', fontsize='large', fontweight='bold'))
+    # for line in wall_pvs:
+    #     art.append(line.plot(color='r', ax=ax1))
+    # # for n in bsptree.empty_leaves:
+    # #     if n in pvs or node == n:
+    # #         continue
+    # #     pol = n.polygon
+    # #     x, y = pol.centroid.x - 15, pol.centroid.y - 15
+    # #     art.append(plt.text(x, y, n.id, color='r', fontsize='large', fontweight='bold'))
+    # plt.pause(0.1)
     # plt.show()
 
     for line in rendered_lines:

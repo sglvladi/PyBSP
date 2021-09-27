@@ -27,7 +27,7 @@ setup(name='pybsp',
       use_scm_version=True,
       install_requires=[
           'shapely>=1.7.1', 'networkx>=2.6.1', 'tqdm', 'stonesoup', 'numpy', 'pyshp', 'matplotlib',
-          'setuptools>=42',
+          'setuptools>=42', 'geopandas'
       ],
       extras_require={},
       )

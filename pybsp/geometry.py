@@ -359,6 +359,24 @@ class MergedLine:
     def names(self):
         return [line.name for line in self.lines]
 
+    @property
+    def endpoints(self):
+        x, y = self.shapely.xy
+        return Point(x[0], y[0]), Point(x[-1], y[-1])
+
+    def endpoints_on_interval(self, ref_point, interval):
+        endpoints = self.endpoints
+        endpoints_polar = [e.to_polar(ref_point) for e in endpoints]
+        endpoints_angle = [e[1] for e in endpoints_polar]
+
+        candidates_min = np.abs(np.array(endpoints_angle) - interval.min)
+        candidates_max = np.abs(np.array(endpoints_angle) - interval.max)
+
+        min_idx = np.flatnonzero(candidates_min < 1e-13)[0]
+        max_idx = np.flatnonzero(candidates_max < 1e-13)[0]
+
+        return endpoints[min_idx], endpoints[max_idx]
+
     def to_interval(self, ref_point=None):
         points = []
         for point in self.shapely.boundary:

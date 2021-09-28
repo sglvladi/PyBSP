@@ -131,8 +131,16 @@ def merge_lists(l):
 
 def merge_fovs2(fov):
     valid_fovs = set()
+    # for i, interval_i in enumerate(fov):
+    #     for j, interval_j in reversed(list(enumerate(fov))):
+    #         if i == j:
+    #             continue
+    #         if interval_i.intersects(interval_j):
+    #             valid_fovs.add((i, j))
+
     for i, interval_i in enumerate(fov):
-        for j, interval_j in reversed(list(enumerate(fov))):
+        for ii, interval_j in enumerate(fov[i+1:]):
+            j = i + ii + 1
             if i == j:
                 continue
             if interval_i.intersects(interval_j):
@@ -188,13 +196,17 @@ def merge_fovs2(fov):
 def merge_lines(lines):
     touching_lines = set()
     for i, line1 in enumerate(lines):
-        for j, line2 in enumerate(lines):
-            if i == j:
+        for ii, line2 in enumerate(lines[i+1:]):
+            j = i + ii + 1
+            if line1 == line2:
                 continue
-            p11, p21 = (line1.p1, line1.p2)
-            p12, p22 = (line2.p1, line2.p2)
-            if p11 == p12 or p11 == p22 or p21 == p12 or p21 == p22:
+            if line1.shapely.intersects(line2.shapely):
                 touching_lines.add((i, j))
+
+            # p11, p21 = (line1.p1, line1.p2)
+            # p12, p22 = (line2.p1, line2.p2)
+            # if p11 == p12 or p11 == p22 or p21 == p12 or p21 == p22:
+            #     touching_lines.add((i, j))
 
     t_lines = merge_lists(touching_lines)
 

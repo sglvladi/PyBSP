@@ -742,6 +742,62 @@ class BSP:
             pool.close()
             pool.join()
 
+    def gen_waypoints(self, ref_point):
+        rendered_lines = self.render(ref_point, use_pvs=True)
+        # Append first line to end
+        rendered_lines.append(rendered_lines[0])
+        # Calculate intervals
+        rendered_intervals = [line.to_interval(ref_point) for line in rendered_lines]
+
+        # Step 1
+        # ------
+        waypoints_step1 = []
+        # Iterate over pairs of lines
+        for i, (line1, line2) in enumerate(zip(rendered_lines, rendered_lines[1:])):
+            # Calculate their intervals
+            interval1 = rendered_intervals[i]
+            interval2 = rendered_intervals[i+1]
+            min1, max1 = line1.endpoints_on_interval(ref_point, interval1)
+            min2, max2 = line2.endpoints_on_interval(ref_point, interval2)
+
+            # If the two intervals are touching
+            if abs(interval1.max-interval2.min) < 1e-10:
+                points = [max1, min2]
+                # Get the endpoints of the lines that are closest
+                # p11, p12 = line1.endpoints
+                # p21, p22 = line2.endpoints
+                # candidates = [(p11, p21), (p11, p22), (p12, p21), (p12, p22)]
+                # distances = [p[0].get_distance(p[1]) for p in candidates]
+                # min_idx = np.argmin(distances)
+                # points = candidates[min_idx]
+                # Select the enpoint that is closest to the reference point
+                distances = [p.get_distance(ref_point) for p in points]
+                min_idx = np.argmin(distances)
+                waypoints_step1.append(points[min_idx])
+            else:
+                waypoints_step1.append(max1)
+                waypoints_step1.append(min2)
+
+        # Step 2
+        # ------
+        waypoints_step2 = []
+        leaves = set()
+        for waypoint in waypoints_step1:
+            rho, phi = waypoint.to_polar(ref_point)
+            x, y = pol2cart(rho-1, phi)
+            p = Point(x+ref_point.x, y+ref_point.y)
+            leaf = self.find_leaf(p)
+            leaves.add(leaf)
+        for leaf in leaves:
+            x, y = leaf.polygon.shapely.centroid.x, leaf.polygon.shapely.centroid.y
+            p = Point(x, y)
+            waypoints_step2.append(p)
+
+
+        return waypoints_step2
+
+
+
     def _traverse_tree_nx(self, node, g, parent=None):
         child = g.number_of_nodes() + 1
         id = node.id
@@ -896,6 +952,9 @@ class BSP:
                     continue
 
         merged = merge_lines(vis_lines)
+        intervals = [line.to_interval(ref_point).min for line in merged]
+        sorted_inds = sorted(range(len(intervals)), key=intervals.__getitem__)
+        merged = [merged[ind] for ind in sorted_inds]
         return merged
 
     def _render_parent(self, parent, child, p):

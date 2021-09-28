@@ -29,7 +29,7 @@ def generate_ref_point():
 
 def main():
     SHOW_PLANES = True
-    TARGET = "GLOBAL"
+    TARGET = "MALTA"
     heuristic = 'min'
     backup_folder = '../data/trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
@@ -38,7 +38,7 @@ def main():
     print(backup_folder)
 
     # Load lines
-    lines = load_target_lines(TARGET, 'oversimplified_merged_polygons.p')
+    lines = load_target_lines(TARGET, 'merged_polygons.p')
 
     # Generate Reference point
     ref_point = generate_ref_point()
@@ -156,6 +156,7 @@ def main():
     # pr.disable()
     print("done")
 
+
     # node = bsptree.find_leaf(ref_point)
     # # node = bsptree.get_node(180)
     # pvs = [bsptree.nodes[n] for n in node.pvs]
@@ -184,6 +185,24 @@ def main():
             y = [point.y, ref_point.y]
             ax1.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.1)
+
+    # pr.enable()
+    # for i in range(100):
+    #     bsptree.render(ref_point, use_pvs=True)
+    # pr.disable()
+    # pr.dump_stats('../data/profiles/render1.pstat')
+
+    print("Generating Waypoints...", end='')
+    # pr.enable()
+    # rendered_lines = plot_visibility2(bsptree, ref_point, plt.gca())
+    now = datetime.datetime.now()
+    waypoints = bsptree.gen_waypoints(ref_point)
+    print(datetime.datetime.now() - now)
+    # now = datetime.datetime.now()
+    # rendered_lines = bsptree.render(ref_point, use_pvs=True)
+    # print(datetime.datetime.now()-now)
+    # pr.disable()
+    print("done")
 
     node = bsptree.get_node(18)
     pvs = node.pvs

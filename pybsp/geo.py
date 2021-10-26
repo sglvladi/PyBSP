@@ -117,15 +117,15 @@ def get_merc_target_polygon(target):
     return target_polygon
 
 
-def load_target_polygons(target):
+def load_target_polygons(target, polygons_filename='merged_polygons.p'):
     dirname = os.path.dirname(__file__)
-    polygons_filename = 'polygons.p'
+    polygons_filename = polygons_filename
     polygons_filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles', polygons_filename))
     polygons = pickle.load(open(polygons_filepath, 'rb'))
     target_polygon = get_merc_target_polygon(target)
     target_polygons = []
     for polygon in polygons:
-        if target_polygon.shapely.contains(polygon):
+        if target == 'GLOBAL' or target_polygon.shapely.contains(polygon):
             target_polygons.append(polygon)
     return target_polygons
 

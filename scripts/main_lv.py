@@ -4,7 +4,7 @@ from shapely.geometry import Polygon
 
 import multiprocessing as mpp
 
-from pybsp.bsp import BSP
+from pybsp.bsp2 import BSP
 from pybsp.geometry import LineSegment, Point
 from pybsp.utils import sort_fovs, plot_nodes
 
@@ -132,10 +132,12 @@ def main():
     point1 = generate_ref_point(polygons)
 
     # Create BSP tree
-    bsptree = BSP(heuristic='min', bounds=((-100, 900), (-100, 900)),)
+    bsptree = BSP(heuristic='even', bounds=((-100, 900), (-100, 900)),)
+
+    bsptree.generate_tree(lines)
 
     # Train the tree
-    bsptree.train(lines, parallel=False)
+    # bsptree.train(lines, parallel=False)
 
     #plt.figure(figsize=(8, 6))
     bsptree.draw_nx(plt.gca(), show_labels=True)
@@ -183,11 +185,12 @@ def main():
     # plt.pause(0.1)
 
     for leaf in bsptree.empty_leaves:
-        pol = leaf.polygon.shapely
-        x, y = pol.centroid.x-15, pol.centroid.y-15
-        # pol.plot(color='green')
+        pol = leaf.polygon
+        x, y = pol.shapely.centroid.x-15, pol.shapely.centroid.y-15
+        pol.plot(color='green')
         plt.text(x, y, leaf.id, color='r', fontsize='large', fontweight='bold')
-    plt.pause(0.1)
+        plt.pause(0.1)
+        a=2
 
     # for line in rendered_lines:
     #     x, y = line.shapely.xy

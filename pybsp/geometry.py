@@ -202,6 +202,12 @@ class LineSegment:
         """returns length of our line segment """
         return self.p1.get_distance(self.p2)
 
+    @property
+    def slope(self):
+        x, y = self.xy
+        slope = np.polyfit(x, y, 1)
+        return slope[0]
+
     def Print(self):
         """prints point coordinates and direction of normal vector"""
         self.p1.Print()

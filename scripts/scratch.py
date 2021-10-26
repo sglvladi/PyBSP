@@ -24,12 +24,15 @@ np.random.seed(seed)
 def generate_ref_point():
     # return Point(1.5955e+06, 4.3e+06)
     # return Point(1.6019e+6, 4.305e+6)
-    return Point(1.593e+6, 4.3e+6)
+
+    # return Point(-3.39e+5, 7.127e+6)
+    return Point(-2e+5, 4.339e+6)
+    # return Point(1.593e+6, 4.3e+6)
 
 
 def main():
     SHOW_PLANES = True
-    TARGET = "MALTA"
+    TARGET = "GLOBAL"
     heuristic = 'min'
     backup_folder = '../data/trees/{}_{}'.format(TARGET, heuristic).lower()
     val = input("Enter backup location: ")
@@ -38,7 +41,7 @@ def main():
     print(backup_folder)
 
     # Load lines
-    lines = load_target_lines(TARGET, 'merged_polygons.p')
+    lines = load_target_lines(TARGET, 'oversimplified_merged_polygons.p')
 
     # Generate Reference point
     ref_point = generate_ref_point()
@@ -179,11 +182,11 @@ def main():
 
     for line in rendered_lines:
         x, y = line.shapely.xy
-        ax1.plot(x, y, 'g')
-        for point in line.shapely.boundary:
-            x = [point.x, ref_point.x]
-            y = [point.y, ref_point.y]
-            ax1.plot(x, y, 'k--', linewidth=0.2)
+        ax1.plot(x, y, 'r')
+        # for point in line.shapely.boundary:
+        #     x = [point.x, ref_point.x]
+        #     y = [point.y, ref_point.y]
+        #     ax1.plot(x, y, 'k--', linewidth=0.2)
     plt.pause(0.1)
 
     # pr.enable()
@@ -203,6 +206,13 @@ def main():
     # print(datetime.datetime.now()-now)
     # pr.disable()
     print("done")
+
+    for i, waypoint in enumerate(waypoints):
+        waypoint.plot(ax=ax1, color='b', marker='x', markersize=10)
+        ax1.text(waypoint.x+10000, waypoint.y+10000, str(i+1), fontsize=15)
+        x = [ref_point.x, waypoint.x]
+        y = [ref_point.y, waypoint.y]
+        ax1.plot(x, y, 'k--', linewidth=0.2)
 
     node = bsptree.get_node(18)
     pvs = node.pvs

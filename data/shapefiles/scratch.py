@@ -63,6 +63,19 @@ def smoothen_polygons(polygons, threshold):
     return smooth_polygons
 
 
+def geopandas_simple_world_polygons():
+    countries = geopandas.read_file(geopandas.datasets.get_path('naturalearth_lowres'))
+    countries = countries[countries.continent != 'Antarctica'].reset_index(drop=True)
+    geoms = countries.geometry.unary_union
+    df = geopandas.GeoDataFrame(geometry=[geoms])
+
+    df = df.explode().reset_index(drop=True)
+
+    # df.plot(cmap='cividis', alpha=0.7, edgecolor='black')
+    # plt.show()
+    return df.geometry.tolist()
+
+
 if __name__ == '__main__':
     df = read_df_from_shapefile('simplified_land_polygons.shp')
 

@@ -65,7 +65,7 @@ def smoothen_polygons(polygons, threshold):
 
 def geopandas_simple_world_polygons():
     countries = geopandas.read_file(geopandas.datasets.get_path('naturalearth_lowres'))
-    countries = countries[countries.continent != 'Antarctica'].reset_index(drop=True)
+    countries = countries[countries.continent != 'Antarctica'].reset_index(drop=True).to_crs('EPSG:3857')
     geoms = countries.geometry.unary_union
     df = geopandas.GeoDataFrame(geometry=[geoms])
 
@@ -77,6 +77,14 @@ def geopandas_simple_world_polygons():
 
 
 if __name__ == '__main__':
+    polygons = geopandas_simple_world_polygons()
+
+    for polygon in polygons:
+        x,y = polygon.exterior.xy
+        plt.plot(x, y, 'k')
+        plt.pause(0.02)
+        a=2
+
     df = read_df_from_shapefile('simplified_land_polygons.shp')
 
     # Remove the south pole
@@ -91,6 +99,8 @@ if __name__ == '__main__':
     polygons = merge_polygons(polygons)
 
     pickle.dump(polygons, open('oversimplified_merged_polygons.p', 'wb'))
+
+
 
 
 

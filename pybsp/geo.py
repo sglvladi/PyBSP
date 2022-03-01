@@ -130,11 +130,11 @@ def load_target_polygons(target, polygons_filename='merged_polygons.p'):
     return target_polygons
 
 
-def load_target_lines(target, polygons_filename='merged_polygons.p'):
+def load_target_lines(target, polygons_filename='merged_polygons.p', force=False):
     dirname = os.path.dirname(__file__)
     filename = '{}.p'.format(target)
     filepath = os.path.abspath(os.path.join(dirname, '..', 'data/shapefiles/lines', filename))
-    if os.path.exists(filepath):
+    if os.path.exists(filepath) and not force:
         print('[INFO]: Loading target lines from file...', end='')
         lines = pickle.load(open(filepath, 'rb'))
         print('Done')

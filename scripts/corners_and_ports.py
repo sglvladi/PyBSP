@@ -9,6 +9,7 @@ import cProfile as profile
 # In outer section of code
 import tqdm
 import multiprocessing as mpp
+import os
 
 pr = profile.Profile()
 pr.disable()
@@ -164,7 +165,7 @@ def comp_adj_matrix(corner_points, adj, bsptree, inds=None):
         adj_matrix[key, value] = 1
         adj_matrix[value, key] = 1
 
-    pool = mpp.Pool(mpp.cpu_count() - 4)
+    pool = mpp.Pool(mpp.cpu_count() - 1)
     if inds is None:
         inds = (ind1 for ind1 in range(len(corner_points)))
 
@@ -231,6 +232,9 @@ def check_los(args):
     adj = []
     all_inds = [i for i in range(len(corner_points))]
     p1 = corner_points[ind1]
+    filename = f'../data/logs/corners/processing/{os.getpid()}-{ind1}.txt'
+    done_filename = f'../data/logs/corners/done/{ind1}.txt'
+    file = open(filename, 'wt').close()
     for ind2 in all_inds:
         if ind2 <= ind1:
             continue
@@ -255,6 +259,8 @@ def check_los(args):
 
         if los:
             adj.append(ind2)
+
+    os.replace(filename, done_filename)
 
     return ind1, adj
 
@@ -346,7 +352,7 @@ def main():
     corner_points, adj = pickle.load(open(f'../data/corners/corners_adj3.pickle', 'rb'))
 
     # Compute adjacency matrix
-    load = 0
+    load = None
     num_nodes = len(corner_points)
     all_inds = [i for i in range(num_nodes)]
     chunks = get_n_chunks(all_inds, 10)
@@ -357,7 +363,7 @@ def main():
 
     for i, chunk in enumerate(chunks):
         print(f'Processing chunk {i+1} of {len(chunks)}')
-        if i <= load:
+        if load is not None and i <= load:
              continue
         adj_matrix_chunk = comp_adj_matrix(corner_points, adj, bsptree, chunk)
         adj_matrix = np.logical_or(adj_matrix, adj_matrix_chunk)
@@ -365,8 +371,8 @@ def main():
         print()
 
 
-    G, corner_points = calc_conn_graph(bsptree, new_polygons, ports)
-    pickle.dump(G, open('../data/graphs/corner_conn_digraph_v5.pickle', 'wb'))
+    # G, corner_points = calc_conn_graph(bsptree, new_polygons, ports)
+    # pickle.dump(G, open('../data/graphs/corner_conn_digraph_v5.pickle', 'wb'))
     # G = pickle.load(open('../data/graphs/corner_conn_digraph_v5.pickle', 'rb'))
     # G = pickle.load(open('../data/graphs/custom_digraph_v4.1.pickle', 'rb'))
 

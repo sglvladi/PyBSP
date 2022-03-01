@@ -1033,9 +1033,15 @@ class BSP:
         else:
             return pickle.load(open(path, 'rb'))
 
-    def check_los(self, p1, p2):
-        if self.find_leaf(p1).is_solid or self.find_leaf(p2).is_solid:
+    def check_los(self, p1, p2, use_pvs=False):
+        leaf1 = self.find_leaf(p1)
+        leaf2 = self.find_leaf(p2)
+        if leaf1.is_solid or leaf2.is_solid:
             return False
+
+        if use_pvs and (leaf2.id not in leaf1.pvs or leaf1.id not in leaf2.pvs):
+            return False
+
         ray = LineSegment(p1, p2)
         node_stack = [self.root]
         i=0

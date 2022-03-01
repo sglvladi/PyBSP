@@ -21,7 +21,7 @@ from shapely.ops import linemerge, unary_union, polygonize
 from stonesoup.functions import pol2cart
 
 from .angles import angle_between
-from .geometry import LineSegment, Point, Polygon
+from .geometry import LineSegment, Point, Polygon, DoubleTolerance
 from .utils import extrapolate_line, merge_lines, process_line, merge_fovs2, remove_artists
 
 panic = None
@@ -389,11 +389,25 @@ class BSP:
 
         # Compute the node's splitting plane
         if pol_left and pol_right:
-            node.plane = LineSegment.from_linestring(pol_left.shapely.intersection(pol_right.shapely), line.normal, line.name)
+            plane = pol_left.shapely.intersection(pol_right.shapely)
+            if not isinstance(plane, LineString):
+                print('Had to add buffer 1')
+                plane = pol_left.shapely.buffer(DoubleTolerance).intersection(
+                    pol_right.shapely)
+            node.plane = LineSegment.from_linestring(plane, line.normal, line.name)
         elif pol_left:
-            node.plane = LineSegment.from_linestring(pol_left.shapely.intersection(l), line.normal, line.name)
+            plane = pol_left.shapely.intersection(l)
+            if not isinstance(plane, LineString):
+                print('Had to add buffer 2')
+                plane = pol_left.shapely.buffer(DoubleTolerance).intersection(l)
+            node.plane = LineSegment.from_linestring(plane, line.normal, line.name)
         else:
-            node.plane = LineSegment.from_linestring(pol_right.shapely.intersection(l), line.normal, line.name)
+            plane = pol_right.shapely.intersection(l)
+            if not isinstance(plane, LineString):
+                print('Had to add buffer 3')
+                plane = pol_right.shapely.buffer(DoubleTolerance).intersection(l)
+            node.plane = LineSegment.from_linestring(plane, line.normal, line.name)
+
         # Ensure normal is preserved
         a = angle_between(node.plane.normalV.to_array(), line.normalV.to_array())
         if abs(a) > np.pi/100:

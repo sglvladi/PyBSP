@@ -3,7 +3,7 @@ import os.path
 import pickle
 import signal
 import random
-from copy import copy
+from copy import copy, deepcopy
 import multiprocessing as mpp
 from collections.abc import Mapping
 from itertools import product
@@ -1199,31 +1199,39 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
             continue
         dest_node = nodes[node_connectivity[current_node.id][target_portal.name]]
 
-        penumbra = compute_anti_penumbra2(last_portal, target_portal)
-        if not penumbra.shapely.is_valid:
+        penumbra = compute_anti_penumbra2(source_portal, target_portal)
+        # penumbra_old = deepcopy(penumbra)
+        # if not penumbra.shapely.is_valid:
+        #     continue
+        # if last_penumbra:
+        #     try:
+        #         intersection = last_penumbra.shapely.intersection(penumbra.shapely)
+        #     except shapely.errors.TopologicalError:
+        #         continue
+        #     if isinstance(intersection, GeometryCollection):
+        #         if intersection.is_empty:
+        #             continue
+        #         geoms = intersection.geoms
+        #         pols = [p for p in geoms if isinstance(p, ShapelyPolygon)]
+        #         # if len(pols) > 1:
+        #         #     print(f'More than 1 polygons.. There\'s actually {len(pols)}')
+        #         intersectioni = pols[0] if len(pols) else None
+        #         # intersectioni = pols[0] # next((p for p in intersection.geoms if isinstance(p, ShapelyPolygon)), None)
+        #         if not intersectioni or intersectioni.area < 1:
+        #             continue
+        #         intersection = intersectioni
+        #     elif isinstance(intersection, MultiPolygon):
+        #         # TODO: Need to handle this!!!!
+        #         continue
+        #     elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
+        #         continue
+        #     elif not isinstance(intersection, ShapelyPolygon):
+        #         continue
+        #     penumbra = Polygon.from_shapely(intersection)
+        if not penumbra.shapely.is_valid or penumbra.shapely.area < 0.1:
             continue
-        if last_penumbra:
-            try:
-                intersection = last_penumbra.shapely.intersection(penumbra.shapely)
-            except shapely.errors.TopologicalError:
-                continue
-            if isinstance(intersection, GeometryCollection):
-                if intersection.is_empty:
-                    continue
-                intersectioni = next((p for p in intersection if isinstance(p, ShapelyPolygon)), None)
-                if not intersectioni or intersectioni.area < 1:
-                    continue
-                intersection = intersectioni
-            elif isinstance(intersection, MultiPolygon):
-                # TODO: Need to handle this!!!!
-                continue
-            elif isinstance(intersection, ShapelyPolygon) and intersection.is_empty:
-                continue
-            elif not isinstance(intersection, ShapelyPolygon):
-                continue
-            penumbra = Polygon.from_shapely(intersection)
-        if not penumbra.shapely.is_valid:
-            continue
+
+        # a = penumbra.plot()
 
         # Add destination node to source node's pvs
         source_node.pvs[dest_node.id] = True
@@ -1256,6 +1264,8 @@ def gen_pvs_recursive(source_node, current_node, source_portal, target_portals, 
         if len(dest_portals):
             gen_pvs_recursive(source_node, dest_node, source_portal, dest_portals, target_portal, nodes,
                               portals, node_connectivity, penumbra, file=file)
+
+        # a.remove()
 
 
 def cut_polygon_by_line(polygon, line):

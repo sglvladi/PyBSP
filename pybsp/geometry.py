@@ -13,7 +13,7 @@ from .angles import to_range2, AngleInterval
 def sign(x): return int(x > 0) - int(x < 0)
 
 
-DoubleTolerance = 1e-5
+DoubleTolerance = 1e-3
 
 
 class Point:
@@ -60,9 +60,8 @@ class Point:
     def print(self):
         print(self.x, ' ', self.y)
 
-    def get_distance(self, OtherPoint):
-        return math.sqrt(math.pow((self.x - OtherPoint.x), 2) +
-                         math.pow((self.y - OtherPoint.y), 2))
+    def get_distance(self, other):
+        return np.hypot(self.x-other.x, self.y-other.y)
 
     def to_array(self):
         return np.array([self.x, self.y])

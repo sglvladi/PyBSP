@@ -1278,10 +1278,10 @@ def compute_anti_penumbra2(source, target):
 
     p1 = line1.p2
     p2 = line2.p2
-    x3, y3 = pol2cart(1e7, phi2)
+    x3, y3 = pol2cart(1e9, phi2)
     x3, y3 = x3 + line2.p2.x, y3 + line2.p2.y
     p3 = Point(x3, y3)
-    x4, y4 = pol2cart(1e7, phi1)
+    x4, y4 = pol2cart(1e9, phi1)
     x4, y4 = x4 + line1.p2.x, y4 + line1.p2.y
     p4 = Point(x4, y4)
     points = [p1, p2, p3, p4]

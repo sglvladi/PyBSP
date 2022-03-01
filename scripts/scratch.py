@@ -7,14 +7,18 @@ pr.disable()
 import datetime
 import pickle
 import multiprocessing as mpp
+# from shapely.errors import ShapelyDeprecationWarning
 
 
 from pybsp.utils import plot_nodes, sort_fovs, remove_artists
-from pybsp.bsp import BSP
+from pybsp.bsp import BSP, gen_pvs_single
 from pybsp.geometry import LineSegment, Point, Polygon
 from pybsp.geo import load_target_lines, get_merc_limits
 
 import sys
+
+import warnings
+# warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 sys.setrecursionlimit(10000000)
 seed = 10000 # np.random.randint(10000000)
@@ -41,7 +45,7 @@ def main():
     print(backup_folder)
 
     # Load lines
-    lines = load_target_lines(TARGET, 'oversimplified_merged_polygons.p')
+    lines = load_target_lines(TARGET, 'panama/oversimplified_merged_polygons3_2.p', force=True)
 
     # Generate Reference point
     ref_point = generate_ref_point()
@@ -62,6 +66,7 @@ def main():
     ylim = plt.ylim()
 
     xmin, xmax, ymin, ymax = get_merc_limits(TARGET)
+    plt.pause(0.01)
 
     # line = lines[0]
     # now = datetime.datetime.now()
@@ -74,18 +79,19 @@ def main():
     # res2 = [line.compare2(l) for l in lines]
     # print(datetime.datetime.now() - now)
 
-    # # Create BSP tree
+    # bsptree = BSP.load(backup_folder, 'Stage3', 'final')
+    # Create BSP tree
     # bsptree = BSP(heuristic=heuristic, bounds=(xlim, ylim))
-    #
-    # # Train the tree
-    # bsptree.train(lines, parallel=True, backup_folder=backup_folder)
+
+    # Train the tree
+    # bsptree.train(lines, parallel=True, backup_folder=backup_folder, start_stage=1, end_stage=2)
 
     # bsptree.gen_portals_walls(parallel=False)
-    # bsptree = BSP.load(backup_folder, 'Stage2','final')
+    bsptree = BSP.load(backup_folder, 'Stage2', 'final')
     # # Train the tree
-    # bsptree.train(lines, parallel=True, backup_folder=backup_folder, start_stage=3)
+    bsptree.train(lines, parallel=True, backup_folder=backup_folder, start_stage=3)
     # bsptree.gen_pvs()
-    bsptree = BSP.load(backup_folder, 'Stage3', 'final')
+    # bsptree = BSP.load(backup_folder, 'Stage3', 'final')
 
 
     # pr.enable()
@@ -100,7 +106,7 @@ def main():
     # Plot tree graph
     # fig2 = plt.figure(figsize=(8, 6))
     # ax2 = fig2.add_subplot(111)
-    # bsptree.draw_nx(ax=ax2, show_labels=True)
+    # bsptree.draw_nx(ax=ax1, show_labels=True)
     # plt.pause(0.01)
 
     if SHOW_PLANES:
@@ -146,6 +152,8 @@ def main():
     #     ax1.set_title(dt.total_seconds())
     #     plt.pause(0.01)
     #     remove_artists(arts)
+
+    # id, pvs = gen_pvs_single((5981, bsptree.nodes, bsptree._portals, bsptree.node_connectivity))
 
     print("Rendering...", end='')
     # pr.enable()
